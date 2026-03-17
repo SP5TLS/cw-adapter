@@ -1,0 +1,97 @@
+name: Build and Deploy to GitHub Pages
+
+on:
+  push:
+    branches: [master, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Cache Docker image layers so the large espressif/idf-rust base
+      # image is not re-downloaded on every run.
+      - name: Build builder image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          tags: cw-adapter-builder:latest
+          load: true
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build firmware and generate flash images
+        run: |
+          chmod +x scripts/build-web.sh
+          docker run --rm \
+            -v "${{ github.workspace }}:/app" \
+            cw-adapter-builder \
+            ./scripts/build-web.sh
+          # Files are owned by the container's esp user; make them readable.
+          sudo chown -R "$USER:$USER" _site/
+
+      - name: Generate manifests
+        run: |
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          for feat in all keyboard gamepad serial midi; do
+            case $feat in
+              all)      label="All Features (Keyboard + Gamepad + Serial CDC + MIDI)" ;;
+              keyboard) label="Keyboard Only" ;;
+              gamepad)  label="Gamepad Only" ;;
+              serial)   label="Serial CDC Only" ;;
+              midi)     label="MIDI Only" ;;
+            esac
+            jq -n \
+              --arg name "UC CW Interface – $label" \
+              --arg version "$SHORT_SHA" \
+              --arg fw   "firmware-${feat}.bin" \
+              '{
+                name: $name,
+                version: $version,
+                new_install_prompt_erase: true,
+                builds: [{
+                  chipFamily: "ESP32-S3",
+                  parts: [{ path: $fw, offset: 0 }]
+                }]
+              }' > "_site/manifest-${feat}.json"
+          done
+
+      - name: Build website
+        run: |
+          sed \
+            -e "s|REPO_URL|https://github.com/${{ github.repository }}|g" \
+            -e "s|BUILD_SHA|$(git rev-parse --short HEAD)|g" \
+            web/index.html > _site/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: _site/
+
+  deploy:
+    needs: build
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/deploy-pages@v4
+        id: deployment

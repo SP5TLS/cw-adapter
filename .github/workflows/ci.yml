@@ -1,0 +1,54 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [thumbv6m-none-eabi, xtensa-esp32s3-none-elf]
+        feature_set: [all, keyboard, gamepad, serial, midi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          targets: ${{ matrix.target == 'thumbv6m-none-eabi' && 'thumbv6m-none-eabi' || '' }}
+
+      - name: Install Xtensa toolchain
+        if: matrix.target == 'xtensa-esp32s3-none-elf'
+        run: |
+          curl -L https://github.com/esp-rs/espup/releases/latest/download/espup-x86_64-unknown-linux-gnu -o espup
+          chmod +x espup
+          ./espup install
+          echo "PATH=$HOME/.rustup/toolchains/esp/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Build RP2040
+        if: matrix.target == 'thumbv6m-none-eabi'
+        run: |
+          FEATURES="rp2040,defmt"
+          if [ "${{ matrix.feature_set }}" == "all" ]; then
+            FEATURES="$FEATURES,keyboard,gamepad,serial,midi"
+          else
+            FEATURES="$FEATURES,${{ matrix.feature_set }}"
+          fi
+          rustup run nightly cargo build --release --target thumbv6m-none-eabi --no-default-features --features "$FEATURES"
+
+      - name: Build ESP32-S3
+        if: matrix.target == 'xtensa-esp32s3-none-elf'
+        run: |
+          source $HOME/export-esp.sh
+          FEATURES="esp32s3,defmt"
+          if [ "${{ matrix.feature_set }}" == "all" ]; then
+            FEATURES="$FEATURES,keyboard,gamepad,serial,midi"
+          else
+            FEATURES="$FEATURES,${{ matrix.feature_set }}"
+          fi
+          rustup run esp cargo build --release --target xtensa-esp32s3-none-elf --no-default-features --features "$FEATURES" -Zbuild-std=core

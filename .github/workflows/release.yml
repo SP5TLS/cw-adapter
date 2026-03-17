@@ -1,0 +1,118 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag name for the release'
+        required: true
+        default: 'v0.1.0'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        target: [thumbv6m-none-eabi, xtensa-esp32s3-none-elf]
+        feature_set: [all, keyboard, gamepad, serial, midi]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          targets: ${{ matrix.target == 'thumbv6m-none-eabi' && 'thumbv6m-none-eabi' || '' }}
+          components: llvm-tools-preview
+
+      - name: Install Xtensa toolchain
+        if: matrix.target == 'xtensa-esp32s3-none-elf'
+        run: |
+          curl -L https://github.com/esp-rs/espup/releases/latest/download/espup-x86_64-unknown-linux-gnu -o espup
+          chmod +x espup
+          ./espup install
+          echo "PATH=$HOME/.rustup/toolchains/esp/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Install cargo-binstall
+        uses: cargo-bins/cargo-binstall@v1.14.1
+
+      - name: Install binary tools
+        run: |
+          cargo binstall -y cargo-binutils
+          if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
+            cargo binstall -y elf2uf2-rs
+          else
+            cargo binstall -y espflash
+          fi
+
+      - name: Build and Package
+        run: |
+          if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
+            ARCH_FEAT="rp2040"
+            BIN="rp2040"
+            CARGO_CMD="rustup run nightly cargo"
+            STD_ARG=""
+          else
+            source $HOME/export-esp.sh
+            ARCH_FEAT="esp32s3"
+            BIN="esp32s3"
+            CARGO_CMD="rustup run esp cargo"
+            STD_ARG="-Zbuild-std=core"
+          fi
+          
+          FEATURES="$ARCH_FEAT,defmt"
+          if [ "${{ matrix.feature_set }}" == "all" ]; then
+            FEATURES="$FEATURES,keyboard,gamepad,serial,midi"
+          else
+            FEATURES="$FEATURES,${{ matrix.feature_set }}"
+          fi
+          
+          $CARGO_CMD build --release --target ${{ matrix.target }} --no-default-features --features "$FEATURES" --bin "$BIN" $STD_ARG
+          
+          # Prepare binaries
+          FILE_BASE="cw-adapter-${{ matrix.target }}-${{ matrix.feature_set }}"
+          ELF="target/${{ matrix.target }}/release/$BIN"
+          
+          if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
+            rustup run nightly rust-objcopy -O binary "$ELF" "$FILE_BASE.bin"
+            # elf2uf2-rs was installed with nightly
+            $HOME/.cargo/bin/elf2uf2-rs "$ELF" "$FILE_BASE.uf2"
+          else
+            $HOME/.cargo/bin/espflash save-image --chip esp32s3 "$ELF" "$FILE_BASE.bin"
+            # Patch the binary so the IDF 5.x bootloader accepts it on all chip
+            # revisions.  Without this the bootloader reads stale code bytes at
+            # the esp_app_desc_t location and may reject the image with:
+            #   "Image requires efuse blk rev >= vX.Y, but chip is vA.B"
+            python3 scripts/patch_esp32s3.py "$FILE_BASE.bin" "$FILE_BASE.bin"
+          fi
+          cp "$ELF" "$FILE_BASE.elf"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware-${{ matrix.target }}-${{ matrix.feature_set }}
+          path: cw-adapter-*
+          if-no-files-found: error
+
+  create_release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: firmware
+          pattern: firmware-*
+          merge-multiple: true
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.event.inputs.tag_name }}
+          files: firmware/*
+          fail_on_unmatched_files: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

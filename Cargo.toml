@@ -1,0 +1,57 @@
+[package]
+name = "cw-adapter"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+# embassy-executor is included by both targets but with different arch features;
+# the arch-specific feature is activated via the rp2040/esp32s3 feature flags below.
+embassy-executor = { version = "0.7.0", features = ["task-arena-size-16384", "executor-thread"] }
+embassy-sync = "0.6.2"
+embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
+embassy-usb = { version = "0.4.0", features = ["defmt"] }
+usbd-hid = "0.8.2"
+defmt = "0.3.10"
+static_cell = "2.1.0"
+portable-atomic = { version = "1.10.0", features = ["critical-section"] }
+
+# RP2040
+embassy-rp = { version = "0.3.0", features = ["rp2040", "defmt", "unstable-pac", "time-driver", "critical-section-impl"], optional = true }
+cortex-m = { version = "0.7.7", optional = true }
+cortex-m-rt = { version = "0.7.3", optional = true }
+defmt-rtt = { version = "0.4.1", optional = true }
+panic-probe = { version = "0.3.2", features = ["print-defmt"], optional = true }
+
+# ESP32-S3
+esp-hal = { version = "0.23.0", features = ["esp32s3", "defmt"], optional = true }
+esp-hal-embassy = { version = "0.6.0", features = ["esp32s3", "defmt"], optional = true }
+esp-backtrace = { version = "0.15.0", features = ["esp32s3", "panic-handler", "exception-handler", "defmt"], optional = true }
+esp-println = { version = "0.13.0", features = ["esp32s3", "defmt-espflash"], optional = true }
+
+[features]
+default = ["keyboard", "gamepad", "serial", "midi", "defmt"]
+keyboard = []
+gamepad = []
+serial = []
+midi = []
+defmt = []
+
+rp2040 = [
+    "dep:embassy-rp",
+    "dep:cortex-m",
+    "dep:cortex-m-rt",
+    "dep:defmt-rtt",
+    "dep:panic-probe",
+    "embassy-executor/arch-cortex-m",
+]
+esp32s3 = ["dep:esp-hal", "dep:esp-hal-embassy", "dep:esp-backtrace", "dep:esp-println"]
+
+[[bin]]
+name = "rp2040"
+path = "src/rp2040.rs"
+required-features = ["rp2040"]
+
+[[bin]]
+name = "esp32s3"
+path = "src/esp32s3.rs"
+required-features = ["esp32s3"]

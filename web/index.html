@@ -1,0 +1,655 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>UC CW Interface · Firmware Flasher</title>
+  <script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module" integrity="sha384-oFiypK2V+NTsHUeObsYhTrn4b+DYnWku6hAO87NX7TIemLlPdqAf3uSe2DuUdTc9" crossorigin="anonymous"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f0f2f5;
+      color: #1a1a2e;
+      min-height: 100vh;
+      padding: 2rem 1rem 4rem;
+    }
+
+    .container { max-width: 680px; margin: 0 auto; }
+
+    header { margin-bottom: 2rem; }
+    header h1 { font-size: 1.75rem; font-weight: 700; }
+    header p { color: #555; margin-top: 0.4rem; font-size: 0.95rem; }
+
+    .card {
+      background: white;
+      border-radius: 10px;
+      padding: 1.5rem;
+      margin-bottom: 1.25rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+    }
+
+    .card-title {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      margin-bottom: 1rem;
+    }
+
+    .step-badge {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: #2563eb;
+      color: white;
+      font-weight: 700;
+      font-size: 0.85rem;
+      flex-shrink: 0;
+    }
+
+    .card-title h2 { font-size: 1rem; font-weight: 600; }
+
+    ol { padding-left: 1.5rem; line-height: 2; color: #444; }
+
+    kbd {
+      display: inline-block;
+      padding: 1px 7px;
+      background: #f1f3f5;
+      border: 1px solid #ccc;
+      border-bottom-width: 2px;
+      border-radius: 4px;
+      font-family: monospace;
+      font-size: 0.85em;
+    }
+
+    .hint {
+      font-size: 0.8rem;
+      color: #888;
+      margin-top: 0.75rem;
+      padding-left: 1.5rem;
+    }
+
+    /* Variant selector */
+    .variants { display: flex; flex-direction: column; gap: 0.6rem; }
+
+    .variant {
+      display: flex;
+      align-items: flex-start;
+      gap: 0.75rem;
+      padding: 0.75rem 1rem;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: border-color 0.15s, background 0.15s;
+    }
+
+    .variant:has(input:checked) {
+      border-color: #2563eb;
+      background: #eff6ff;
+    }
+
+    .variant input[type="radio"] {
+      margin-top: 3px;
+      accent-color: #2563eb;
+      flex-shrink: 0;
+    }
+
+    .variant strong { display: block; font-size: 0.95rem; margin-bottom: 0.1rem; }
+    .variant span { font-size: 0.82rem; color: #666; }
+
+    /* Mode pin table */
+    #mode-pin-info { margin-top: 1rem; }
+    #mode-pin-info p { font-size: 0.82rem; color: #555; margin-bottom: 0.5rem; }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.82rem;
+    }
+    th, td { text-align: left; padding: 0.3rem 0.6rem; border-bottom: 1px solid #eee; }
+    th { color: #888; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
+    td:first-child, td:nth-child(2) { font-family: monospace; }
+
+    /* Flash section */
+    .note {
+      font-size: 0.82rem;
+      color: #666;
+      background: #f8f9fa;
+      border-left: 3px solid #d1d5db;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0 4px 4px 0;
+      margin-bottom: 0.75rem;
+    }
+
+    esp-web-install-button::part(button) {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      padding: 0.7rem 1.5rem;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s, transform 0.1s;
+    }
+    esp-web-install-button::part(button):hover { background: #1d4ed8; }
+    esp-web-install-button::part(button):active { transform: scale(0.98); }
+
+    .unsupported-msg {
+      background: #fff8e1;
+      border: 1px solid #ffd54f;
+      border-radius: 6px;
+      padding: 0.6rem 1rem;
+      font-size: 0.85rem;
+      color: #5d4037;
+    }
+
+    /* Platform separator */
+    .platform-heading {
+      font-size: 0.7rem;
+      font-weight: 700;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: #999;
+      margin: 2rem 0 0.75rem;
+    }
+
+    /* UF2 download grid */
+    .uf2-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 0.6rem;
+      margin-top: 1rem;
+    }
+
+    .uf2-btn {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.25rem;
+      padding: 0.65rem 0.5rem;
+      border: 1.5px solid #e2e8f0;
+      border-radius: 8px;
+      text-decoration: none;
+      color: #1a1a2e;
+      font-size: 0.82rem;
+      transition: border-color 0.15s, background 0.15s;
+    }
+    .uf2-btn:hover { border-color: #2563eb; background: #eff6ff; }
+    .uf2-btn strong { font-size: 0.9rem; }
+    .uf2-btn span { font-size: 0.75rem; color: #666; text-align: center; }
+
+    footer {
+      text-align: center;
+      color: #aaa;
+      font-size: 0.78rem;
+      margin-top: 2rem;
+    }
+    footer a { color: #aaa; }
+
+    /* ── Adapter Tester ───────────────────────────────── */
+    .paddle-row {
+      display: flex;
+      gap: 1rem;
+      margin: 1.25rem 0 0.5rem;
+    }
+
+    .paddle-indicator {
+      flex: 1;
+      padding: 1.25rem 0.5rem;
+      border-radius: 8px;
+      text-align: center;
+      font-size: 1.25rem;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      background: #f1f3f5;
+      border: 2px solid #e2e8f0;
+      color: #bbb;
+      transition: background 0.06s, border-color 0.06s, color 0.06s;
+    }
+
+    .paddle-indicator.active {
+      background: #d1fae5;
+      border-color: #10b981;
+      color: #065f46;
+    }
+
+    #test-init-btn {
+      margin-top: 1rem;
+      padding: 0.6rem 1.5rem;
+      background: #2563eb;
+      color: white;
+      border: none;
+      border-radius: 8px;
+      font-size: 0.95rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    #test-init-btn:hover { background: #1d4ed8; }
+
+    #test-status-msg {
+      font-size: 0.82rem;
+      color: #666;
+      margin-top: 0.5rem;
+      min-height: 1.4em;
+    }
+
+    #test-debug {
+      margin-top: 0.6rem;
+      background: #f8f9fa;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      padding: 0.45rem 0.7rem;
+    }
+
+    #test-debug pre {
+      font-family: monospace;
+      font-size: 0.76rem;
+      color: #444;
+      margin: 0;
+      white-space: pre-wrap;
+      line-height: 1.6;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+
+    <header>
+      <h1>UC CW Interface</h1>
+      <p>ESP32-S3 browser flasher &middot; RP2040 UF2 downloads &mdash; no software to install</p>
+    </header>
+
+    <!-- ESP32-S3 section -->
+    <p class="platform-heading" style="margin-top:0">ESP32-S3 &mdash; browser flash via Web Serial</p>
+
+    <!-- Step 1 -->
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">1</span>
+        <h2>Enter bootloader mode</h2>
+      </div>
+      <ol>
+        <li>Press and hold the <kbd>BOOT</kbd> button on the board</li>
+        <li>Press and release <kbd>RESET</kbd></li>
+        <li>Release <kbd>BOOT</kbd></li>
+      </ol>
+      <p class="hint">No RESET button? Hold <kbd>BOOT</kbd>, plug in USB, then release <kbd>BOOT</kbd>.</p>
+    </div>
+
+    <!-- Step 2 -->
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">2</span>
+        <h2>Choose firmware variant</h2>
+      </div>
+      <div class="variants">
+        <label class="variant">
+          <input type="radio" name="variant" value="all" checked>
+          <div>
+            <strong>All Features</strong>
+            <span>Composite USB — Keyboard + Gamepad + Serial CDC + MIDI; active interface selected by mode pins at boot</span>
+          </div>
+        </label>
+        <label class="variant">
+          <input type="radio" name="variant" value="keyboard">
+          <div>
+            <strong>Keyboard Only</strong>
+            <span>USB HID keyboard — CW paddle inputs mapped to keystrokes</span>
+          </div>
+        </label>
+        <label class="variant">
+          <input type="radio" name="variant" value="gamepad">
+          <div>
+            <strong>Gamepad Only</strong>
+            <span>USB HID gamepad — dit and dah appear as gamepad buttons</span>
+          </div>
+        </label>
+        <label class="variant">
+          <input type="radio" name="variant" value="serial">
+          <div>
+            <strong>Serial CDC Only</strong>
+            <span>USB serial port — dit/dah state signalled via DCD/DSR modem control lines (not character data)</span>
+          </div>
+        </label>
+        <label class="variant">
+          <input type="radio" name="variant" value="midi">
+          <div>
+            <strong>MIDI Only</strong>
+            <span>USB MIDI — Note On/Off ch 1, note 60 (dit) &amp; 62 (dah); works with deskHPSDR, Thetis, Vail</span>
+          </div>
+        </label>
+      </div>
+
+      <div id="mode-pin-info">
+        <p>Interface selected at power-on by GPIO6 (S0), GPIO7 (S1), GPIO8 (S2) — pull low to activate (internal pull-ups; leave open for HIGH):</p>
+        <table>
+          <thead><tr><th>S0 (GPIO6)</th><th>S1 (GPIO7)</th><th>S2 (GPIO8)</th><th>Mode</th></tr></thead>
+          <tbody>
+            <tr><td>open</td><td>open</td><td>open</td><td>Composite — all interfaces active</td></tr>
+            <tr><td>LOW</td><td>open</td><td>open</td><td>Keyboard only</td></tr>
+            <tr><td>open</td><td>LOW</td><td>open</td><td>Gamepad only</td></tr>
+            <tr><td>open</td><td>open</td><td>LOW</td><td>Serial CDC only</td></tr>
+            <tr><td>LOW</td><td>LOW</td><td>open</td><td>MIDI only</td></tr>
+            <tr><td colspan="3"><em>any other combination</em></td><td>Composite (fallback)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Step 3 -->
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">3</span>
+        <h2>Flash</h2>
+      </div>
+      <p class="note">
+        Requires <strong>Chrome</strong> or <strong>Edge</strong> on desktop &mdash;
+        Web Serial is not available in Firefox.
+        Erases flash and writes firmware (&asymp;30&nbsp;s).
+      </p>
+      <esp-web-install-button id="flasher" manifest="manifest-all.json">
+        <button slot="activate">&#9889; Connect &amp; Flash</button>
+        <div slot="unsupported" class="unsupported-msg">
+          Web Serial is not supported in this browser.
+          Please open this page in <strong>Chrome</strong> or <strong>Edge</strong>.
+        </div>
+      </esp-web-install-button>
+    </div>
+
+    <!-- RP2040 section -->
+    <p class="platform-heading">Raspberry Pi Pico / RP2040 &mdash; UF2 drag-and-drop</p>
+
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">1</span>
+        <h2>Enter bootloader mode</h2>
+      </div>
+      <ol>
+        <li>Hold the <kbd>BOOTSEL</kbd> button on the Pico</li>
+        <li>Plug in the USB cable (keep holding)</li>
+        <li>Release <kbd>BOOTSEL</kbd> &mdash; a drive named <kbd>RPI-RP2</kbd> appears</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">2</span>
+        <h2>Download &amp; copy firmware</h2>
+      </div>
+      <p style="font-size:0.85rem;color:#555;margin-bottom:0.25rem;">
+        Drag the UF2 file onto the <kbd>RPI-RP2</kbd> drive. The Pico reboots automatically.
+      </p>
+      <div class="uf2-grid">
+        <a class="uf2-btn" href="firmware-rp2040-all.uf2" download>
+          <strong>&#11015; All Features</strong>
+          <span>Keyboard + Gamepad + Serial + MIDI; mode pins select interface</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2040-midi.uf2" download>
+          <strong>&#11015; MIDI</strong>
+          <span>USB MIDI only — note 60/62 for deskHPSDR, Thetis, Vail</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2040-keyboard.uf2" download>
+          <strong>&#11015; Keyboard</strong>
+          <span>USB HID keyboard only</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2040-gamepad.uf2" download>
+          <strong>&#11015; Gamepad</strong>
+          <span>USB HID gamepad only</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2040-serial.uf2" download>
+          <strong>&#11015; Serial CDC</strong>
+          <span>USB serial port only</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- Adapter Tester -->
+    <p class="platform-heading">Adapter Tester</p>
+
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">&#9654;</span>
+        <h2>Test your adapter</h2>
+      </div>
+
+      <div class="variants">
+        <label class="variant">
+          <input type="radio" name="test-input" value="keyboard" checked>
+          <div>
+            <strong>Keyboard</strong>
+            <span>Listens for Z (dit) and X (dah) keystrokes</span>
+          </div>
+        </label>
+        <label class="variant">
+          <input type="radio" name="test-input" value="midi">
+          <div>
+            <strong>MIDI</strong>
+            <span>Note 60 = dit, Note 62 = dah &mdash; Web MIDI API (Chrome/Edge)</span>
+          </div>
+        </label>
+        <label class="variant">
+          <input type="radio" name="test-input" value="serial">
+          <div>
+            <strong>Serial CDC</strong>
+            <span>DCD = dit, DSR = dah &mdash; modem signals via Web Serial (Chrome/Edge)</span>
+          </div>
+        </label>
+        <label class="variant">
+          <input type="radio" name="test-input" value="gamepad">
+          <div>
+            <strong>Gamepad</strong>
+            <span>Button 1 = dit, Button 2 = dah &mdash; Gamepad API</span>
+          </div>
+        </label>
+      </div>
+
+      <button id="test-init-btn">Initialize</button>
+
+      <div id="test-output" style="display:none">
+        <div class="paddle-row">
+          <div class="paddle-indicator" id="dit-indicator">DIT</div>
+          <div class="paddle-indicator" id="dah-indicator">DAH</div>
+        </div>
+        <p id="test-status-msg"></p>
+        <div id="test-debug" style="display:none"><pre id="test-debug-text"></pre></div>
+      </div>
+    </div>
+
+    <footer>
+      Firmware built automatically from
+      <a href="REPO_URL">source</a>
+      (commit&nbsp;BUILD_SHA)
+      &middot;
+      Powered by <a href="https://esphome.github.io/esp-web-tools/">esp-web-tools</a>
+    </footer>
+
+  </div>
+
+  <script>
+    const flasher = document.getElementById('flasher');
+    const modePinInfo = document.getElementById('mode-pin-info');
+
+    document.querySelectorAll('input[name="variant"]').forEach(radio => {
+      radio.addEventListener('change', ({ target }) => {
+        flasher.setAttribute('manifest', `manifest-${target.value}.json`);
+        modePinInfo.style.display = target.value === 'all' ? '' : 'none';
+      });
+    });
+
+    // ── Adapter Tester ────────────────────────────────────────────────────────
+    let testCleanup = null;
+    const ditEl        = document.getElementById('dit-indicator');
+    const dahEl        = document.getElementById('dah-indicator');
+    const testOutput   = document.getElementById('test-output');
+    const testStatusEl = document.getElementById('test-status-msg');
+    const testDebugEl  = document.getElementById('test-debug');
+    const testDebugPre = document.getElementById('test-debug-text');
+
+    const setDit       = v   => ditEl.classList.toggle('active', v);
+    const setDah       = v   => dahEl.classList.toggle('active', v);
+    const setTestStatus = msg => { testStatusEl.textContent = msg; };
+    const setDebug     = txt => { testDebugPre.textContent = txt; };
+    const showDebug    = show => { testDebugEl.style.display = show ? '' : 'none'; };
+
+    document.getElementById('test-init-btn').addEventListener('click', async () => {
+      if (testCleanup) { testCleanup(); testCleanup = null; }
+      setDit(false); setDah(false);
+      testOutput.style.display = '';
+      setTestStatus('');
+      setDebug('');
+      showDebug(false);
+      const mode = document.querySelector('input[name="test-input"]:checked').value;
+      if      (mode === 'keyboard') initTestKeyboard();
+      else if (mode === 'midi')     await initTestMidi();
+      else if (mode === 'serial')   await initTestSerial();
+      else if (mode === 'gamepad')  initTestGamepad();
+    });
+
+    function initTestKeyboard() {
+      const down = e => { if (e.code === 'KeyZ') setDit(true);  if (e.code === 'KeyX') setDah(true);  };
+      const up   = e => { if (e.code === 'KeyZ') setDit(false); if (e.code === 'KeyX') setDah(false); };
+      document.addEventListener('keydown', down);
+      document.addEventListener('keyup',   up);
+      testCleanup = () => {
+        document.removeEventListener('keydown', down);
+        document.removeEventListener('keyup',   up);
+        setDit(false); setDah(false);
+      };
+      setTestStatus('Listening — press Z (dit) or X (dah).');
+    }
+
+    // MIDI note name helper: 60 → "C4", 62 → "D4", etc.
+    const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
+    const noteName = n => NOTE_NAMES[n % 12] + (Math.floor(n / 12) - 1);
+
+    async function initTestMidi() {
+      if (!navigator.requestMIDIAccess) {
+        setTestStatus('Web MIDI is not supported in this browser. Use Chrome or Edge.');
+        return;
+      }
+      try {
+        const access = await navigator.requestMIDIAccess();
+        showDebug(true);
+        setDebug('(waiting for MIDI event\u2026)');
+        const onMsg = e => {
+          const [st, note, vel] = e.data;
+          const ch   = (st & 0x0F) + 1;
+          const type = st & 0xF0;
+          const on   = type === 0x90 && vel > 0;
+          const off  = type === 0x80 || (type === 0x90 && vel === 0);
+          if (note === 60) { if (on) setDit(true);  if (off) setDit(false); }
+          if (note === 62) { if (on) setDah(true);  if (off) setDah(false); }
+          const typeName = on ? 'Note On ' : off ? 'Note Off' : `0x${type.toString(16).padStart(2,'0')}`;
+          const port     = e.target.name || e.target.id || 'unknown port';
+          setDebug(
+            `event:    ${typeName}\n` +
+            `channel:  ${ch}\n` +
+            `note:     ${note}  (${noteName(note)})\n` +
+            `velocity: ${vel}\n` +
+            `port:     ${port}`
+          );
+        };
+        const attach = () => { for (const p of access.inputs.values()) p.onmidimessage = onMsg; };
+        attach();
+        access.onstatechange = attach;
+        testCleanup = () => {
+          for (const p of access.inputs.values()) p.onmidimessage = null;
+          access.onstatechange = null;
+          setDit(false); setDah(false);
+        };
+        const n = access.inputs.size;
+        setTestStatus(n
+          ? `${n} MIDI input${n > 1 ? 's' : ''} connected. Waiting for note 60 (dit) or 62 (dah)\u2026`
+          : 'No MIDI inputs found — connect the adapter then reinitialize.');
+      } catch (e) { setTestStatus('MIDI error: ' + e.message); }
+    }
+
+    async function initTestSerial() {
+      if (!navigator.serial) {
+        setTestStatus('Web Serial is not supported in this browser. Use Chrome or Edge.');
+        return;
+      }
+      let port;
+      try {
+        port = await navigator.serial.requestPort();
+        await port.open({ baudRate: 9600 });
+      } catch (e) { setTestStatus('Serial error: ' + e.message); return; }
+      setTestStatus('Port open — polling modem signal lines\u2026');
+      showDebug(true);
+      const on  = v => v ? 'ON ' : 'OFF';
+      let running = true;
+      (async () => {
+        while (running) {
+          try {
+            const s = await port.getSignals();
+            setDit(s.dataCarrierDetect);
+            setDah(s.dataSetReady);
+            setDebug(
+              `DCD  (Data Carrier Detect / dit):  ${on(s.dataCarrierDetect)}\n` +
+              `DSR  (Data Set Ready      / dah):  ${on(s.dataSetReady)}\n` +
+              `CTS  (Clear To Send):              ${on(s.clearToSend)}\n` +
+              `RI   (Ring Indicator):             ${on(s.ringIndicator)}`
+            );
+          } catch (_) {}
+          await new Promise(r => setTimeout(r, 16));
+        }
+      })();
+      testCleanup = () => {
+        running = false;
+        port.close().catch(() => {});
+        setDit(false); setDah(false);
+      };
+    }
+
+    function initTestGamepad() {
+      let gpIdx = null;
+      let rafId = null;
+      const poll = () => {
+        if (gpIdx !== null) {
+          const gp = navigator.getGamepads()[gpIdx];
+          if (gp) {
+            setDit(gp.buttons[0]?.pressed ?? false);
+            setDah(gp.buttons[1]?.pressed ?? false);
+            setDebug(
+              gp.buttons.map((b, i) =>
+                `B${(i + 1).toString().padStart(2)}: ${b.pressed ? 'pressed ' : 'released'}`
+              ).join('\n')
+            );
+          }
+        }
+        rafId = requestAnimationFrame(poll);
+      };
+      const onConnect = e => {
+        gpIdx = e.gamepad.index;
+        setTestStatus(`Gamepad connected: "${e.gamepad.id}"`);
+        showDebug(true);
+      };
+      window.addEventListener('gamepadconnected', onConnect);
+      // Use already-connected gamepad if present
+      const existing = [...navigator.getGamepads()].find(g => g);
+      if (existing) {
+        gpIdx = existing.index;
+        setTestStatus(`Using gamepad: "${existing.id}"`);
+        showDebug(true);
+      } else {
+        setTestStatus('Press any button on the adapter to activate it\u2026');
+      }
+      poll();
+      testCleanup = () => {
+        window.removeEventListener('gamepadconnected', onConnect);
+        cancelAnimationFrame(rafId);
+        setDit(false); setDah(false);
+      };
+    }
+  </script>
+</body>
+</html>

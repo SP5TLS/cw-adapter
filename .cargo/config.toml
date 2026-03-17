@@ -1,0 +1,13 @@
+[target.thumbv6m-none-eabi]
+runner = "probe-rs run --chip RP2040"
+
+[target.xtensa-esp32s3-none-elf]
+runner = "espflash flash --monitor"
+rustflags = ["-C", "link-arg=-Tlinkall.x"]
+
+[build]
+# Default to RP2040 for now, or the user can specify
+target = "thumbv6m-none-eabi"
+
+[env]
+DEFMT_LOG = "debug"
