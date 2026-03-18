@@ -16,11 +16,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust (RP2040)
+        if: matrix.target == 'thumbv6m-none-eabi'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          targets: ${{ matrix.target == 'thumbv6m-none-eabi' && 'thumbv6m-none-eabi' || '' }}
+          targets: thumbv6m-none-eabi
 
       - name: Install Xtensa toolchain
         if: matrix.target == 'xtensa-esp32s3-none-elf'
@@ -29,6 +30,9 @@ jobs:
           chmod +x espup
           ./espup install
           echo "PATH=$HOME/.rustup/toolchains/esp/bin:$PATH" >> $GITHUB_ENV
+
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
 
       - name: Build RP2040
         if: matrix.target == 'thumbv6m-none-eabi'

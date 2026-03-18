@@ -21,11 +21,12 @@ Usage:
 The output file is a drop-in replacement ready for espflash write-flash.
 """
 
+import argparse
 import hashlib
 import sys
 
 
-def patch(input_path: str, output_path: str) -> None:
+def patch(input_path: str, output_path: str, app_offset: int = 0) -> None:
     with open(input_path, "rb") as f:
         data = bytearray(f.read())
 
@@ -37,26 +38,15 @@ def patch(input_path: str, output_path: str) -> None:
     #   0x18  first segment header (load_addr, size)
     #   0x20  first segment data  ← esp_app_desc_t starts here
     #
-    # esp_app_desc_t field offsets (IDF 5.x):
-    #   0x00  magic             u32  (must be 0xABCD5432)
-    #   0x04  secure_version    u32
-    #   0x08  reserv1           u32[2]
-    #   0x10  version           u8[32]
-    #   0x30  project_name      u8[32]
-    #   0x50  time              u8[16]
-    #   0x60  date              u8[16]
-    #   0x70  idf_ver           u8[32]
-    #   0x90  app_elf_sha256    u8[32]
-    #   0xB0  min_efuse_blk_rev_full  u16  ← patch target
-    #   0xB2  max_efuse_blk_rev_full  u16  ← patch target
-    #   0xB4  reserv2           u32[19]
-    #   (total 256 bytes)
-    #
-    # So the patch targets are at binary offsets 0x20 + 0xB0 = 0xD0 and 0xD2.
+    # So the patch targets are at binary offsets app_offset + 0x20 + 0xB0 = 0xD0 and 0xD2.
 
-    APP_DESC_OFFSET = 0x20          # start of first segment data
+    APP_DESC_OFFSET = app_offset + 0x20          # start of first segment data
     MIN_EFUSE_OFFSET = APP_DESC_OFFSET + 0xB0   # 0xD0
     MAX_EFUSE_OFFSET = APP_DESC_OFFSET + 0xB2   # 0xD2
+
+    if app_offset + 0xD2 >= len(data):
+        print(f"Error: File too small for app_offset 0x{app_offset:x}", file=sys.stderr)
+        sys.exit(1)
 
     magic = int.from_bytes(data[APP_DESC_OFFSET:APP_DESC_OFFSET + 4], "little")
     if magic == 0xABCD5432:
@@ -83,22 +73,22 @@ def patch(input_path: str, output_path: str) -> None:
     #   1 byte checksum
     #   (if hash_appended) 32 bytes SHA-256
 
-    segment_count = data[1]
-    hash_appended = data[8 + 15]   # extended header byte 15
+    segment_count = data[app_offset + 1]
+    hash_appended = data[app_offset + 8 + 15]   # extended header byte 15
 
-    offset = 8 + 16                 # skip basic + extended header
+    offset = app_offset + 8 + 16                 # skip basic + extended header
     for _ in range(segment_count):
         seg_size = int.from_bytes(data[offset + 4: offset + 8], "little")
         offset = offset + 8 + seg_size
 
-    # Align so that (offset + padding + 1) % 16 == 0
-    padding = (15 - (offset % 16)) % 16
+    # Align so that (offset + padding + 1 - app_offset) % 16 == 0 relative to app_offset
+    padding = (15 - ((offset - app_offset) % 16)) % 16
     checksum_offset = offset + padding
 
     # ── Recalculate checksum ──────────────────────────────────────────────
     # XOR of every segment data byte, initial value 0xEF.
     checksum = 0xEF
-    seg_offset = 8 + 16
+    seg_offset = app_offset + 8 + 16
     for _ in range(segment_count):
         seg_size = int.from_bytes(data[seg_offset + 4: seg_offset + 8], "little")
         seg_data_start = seg_offset + 8
@@ -113,7 +103,8 @@ def patch(input_path: str, output_path: str) -> None:
     # ── Recalculate SHA-256 (if present) ──────────────────────────────────
     if hash_appended:
         sha256_offset = checksum_offset + 1
-        sha256 = hashlib.sha256(data[:sha256_offset]).digest()
+        # Calculate SHA256 over everything from app_offset to sha256_offset
+        sha256 = hashlib.sha256(data[app_offset:sha256_offset]).digest()
         old_sha = data[sha256_offset: sha256_offset + 32].hex()
         print(f"  SHA-256 at 0x{sha256_offset:05x}: {old_sha[:16]}… → {sha256.hex()[:16]}…")
         data[sha256_offset: sha256_offset + 32] = sha256
@@ -127,9 +118,12 @@ def patch(input_path: str, output_path: str) -> None:
 
 
 if __name__ == "__main__":
-    if len(sys.argv) != 3:
-        print(f"Usage: {sys.argv[0]} INPUT.bin OUTPUT.bin", file=sys.stderr)
-        sys.exit(1)
-    print(f"Patching {sys.argv[1]} …")
-    patch(sys.argv[1], sys.argv[2])
+    parser = argparse.ArgumentParser(description="Patch an ESP32-S3 app binary.")
+    parser.add_argument("input", help="Input .bin file")
+    parser.add_argument("output", help="Output .bin file")
+    parser.add_argument("--offset", type=lambda x: int(x, 0), default=0, help="App offset (e.g. 0x10000 for merged binary)")
+    args = parser.parse_args()
+
+    print(f"Patching {args.input} (app_offset=0x{args.offset:x}) …")
+    patch(args.input, args.output, args.offset)
     print("Done.")

@@ -1,5 +1,6 @@
 [target.thumbv6m-none-eabi]
 runner = "probe-rs run --chip RP2040"
+rustflags = ["-C", "link-arg=-Tlink.x"]
 
 [target.xtensa-esp32s3-none-elf]
 runner = "espflash flash --monitor"

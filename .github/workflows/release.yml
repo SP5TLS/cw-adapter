@@ -18,11 +18,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust
+      - name: Install Rust (RP2040)
+        if: matrix.target == 'thumbv6m-none-eabi'
         uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: nightly
-          targets: ${{ matrix.target == 'thumbv6m-none-eabi' && 'thumbv6m-none-eabi' || '' }}
+          targets: thumbv6m-none-eabi
           components: llvm-tools-preview
 
       - name: Install Xtensa toolchain
@@ -33,10 +34,15 @@ jobs:
           ./espup install
           echo "PATH=$HOME/.rustup/toolchains/esp/bin:$PATH" >> $GITHUB_ENV
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Install cargo-binstall
         uses: cargo-bins/cargo-binstall@v1.14.1
 
       - name: Install binary tools
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cargo binstall -y cargo-binutils
           if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
@@ -74,8 +80,7 @@ jobs:
           ELF="target/${{ matrix.target }}/release/$BIN"
           
           if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
-            rustup run nightly rust-objcopy -O binary "$ELF" "$FILE_BASE.bin"
-            # elf2uf2-rs was installed with nightly
+            $HOME/.cargo/bin/rust-objcopy -O binary "$ELF" "$FILE_BASE.bin"
             $HOME/.cargo/bin/elf2uf2-rs "$ELF" "$FILE_BASE.uf2"
           else
             $HOME/.cargo/bin/espflash save-image --chip esp32s3 "$ELF" "$FILE_BASE.bin"

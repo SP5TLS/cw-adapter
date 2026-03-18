@@ -29,6 +29,7 @@ for feat in all keyboard gamepad serial midi; do
         target/xtensa-esp32s3-none-elf/release/esp32s3 \
         /app/_site/firmware-${feat}.bin
 
+    python3 /app/scripts/patch_esp32s3.py /app/_site/firmware-${feat}.bin /app/_site/firmware-${feat}.bin --offset 0x10000
     python3 /app/scripts/trim-binary.py /app/_site/firmware-${feat}.bin
 done
 

@@ -34,15 +34,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Rust Cache
+        uses: Swatinem/rust-cache@v2
+
       - name: Build firmware and generate flash images
         run: |
+          mkdir -p _site
+          chmod 777 _site
           chmod +x scripts/build-web.sh
+          mkdir -p ~/.cargo/registry ~/.cargo/git
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
+            -v "$HOME/.cargo/registry:/home/esp/.cargo/registry" \
+            -v "$HOME/.cargo/git:/home/esp/.cargo/git" \
             cw-adapter-builder \
             ./scripts/build-web.sh
           # Files are owned by the container's esp user; make them readable.
-          sudo chown -R "$USER:$USER" _site/
+          sudo chown -R "$USER:$USER" _site/ target/ ~/.cargo/registry/ ~/.cargo/git/
 
       - name: Generate manifests
         run: |

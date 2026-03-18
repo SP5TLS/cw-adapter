@@ -1,5 +1,5 @@
 # Use the pre-built ESP Rust image
-FROM espressif/idf-rust:all_1.84.0.0
+FROM espressif/idf-rust:all_latest
 
 # Image runs as user 'esp' by default
 # Install thumbv6m target and elf2uf2-rs for RP2040 in the nightly toolchain

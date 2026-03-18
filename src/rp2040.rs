@@ -21,6 +21,13 @@ use usbd_hid::descriptor::KeyboardReport;
 
 use {defmt_rtt as _, panic_probe as _};
 
+defmt::timestamp!("{=u64:us}", embassy_time::Instant::now().as_micros());
+
+#[defmt::panic_handler]
+fn panic() -> ! {
+    cortex_m::asm::udf()
+}
+
 bind_interrupts!(struct Irqs {
     USBCTRL_IRQ => InterruptHandler<USB>;
 });
