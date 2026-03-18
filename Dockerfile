@@ -6,6 +6,13 @@ FROM espressif/idf-rust:all_latest
 RUN rustup target add --toolchain nightly thumbv6m-none-eabi \
  && cargo +nightly install elf2uf2-rs
 
+# Make the home directory, cargo, and rustup dirs accessible to any user.
+# This allows running the container with `--user $(id -u):$(id -g)` in CI environments
+# so that all generated files are owned by the host runner by default.
+USER root
+RUN chmod 755 /home/esp /home/esp/.cargo /home/esp/.cargo/bin /home/esp/.rustup
+USER esp
+
 WORKDIR /app
 
 # The workspace should be mounted to /app at runtime.

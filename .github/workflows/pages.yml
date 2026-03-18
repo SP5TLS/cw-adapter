@@ -40,18 +40,19 @@ jobs:
       - name: Build firmware and generate flash images
         run: |
           mkdir -p _site
-          chmod 777 _site
           chmod +x scripts/build-web.sh
           mkdir -p ~/.cargo/registry ~/.cargo/git
-          chmod -R 777 ~/.cargo
           docker run --rm \
+            --user $(id -u):$(id -g) \
+            -e HOME=/tmp \
+            -e CARGO_HOME=/tmp/.cargo \
+            -e RUSTUP_HOME=/home/esp/.rustup \
+            -e PATH=/home/esp/.cargo/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin \
             -v "${{ github.workspace }}:/app" \
-            -v "$HOME/.cargo/registry:/home/esp/.cargo/registry" \
-            -v "$HOME/.cargo/git:/home/esp/.cargo/git" \
+            -v "$HOME/.cargo/registry:/tmp/.cargo/registry" \
+            -v "$HOME/.cargo/git:/tmp/.cargo/git" \
             cw-adapter-builder \
             ./scripts/build-web.sh
-          # Files are owned by the container's esp user; make them readable.
-          sudo chown -R "$USER:$USER" _site/ target/ ~/.cargo/registry/ ~/.cargo/git/
 
       - name: Generate manifests
         run: |
