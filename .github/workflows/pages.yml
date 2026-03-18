@@ -43,6 +43,7 @@ jobs:
           chmod 777 _site
           chmod +x scripts/build-web.sh
           mkdir -p ~/.cargo/registry ~/.cargo/git
+          chmod -R 777 ~/.cargo
           docker run --rm \
             -v "${{ github.workspace }}:/app" \
             -v "$HOME/.cargo/registry:/home/esp/.cargo/registry" \
