@@ -11,7 +11,7 @@ embassy-sync = "0.6.2"
 embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
 embassy-usb = { version = "0.4.0", features = ["defmt"] }
 usbd-hid = "0.8.2"
-defmt = "0.3.10"
+defmt = "0.3"
 static_cell = "2.1.0"
 portable-atomic = { version = "1.10.0", features = ["critical-section"] }
 
