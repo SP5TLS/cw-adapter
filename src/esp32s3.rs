@@ -5,9 +5,11 @@ use defmt::*;
 use embassy_executor::Spawner;
 use embassy_usb::Builder;
 use esp_hal::gpio::{Input, Pull};
+use esp_hal::interrupt::software::SoftwareInterruptControl;
 use esp_hal::otg_fs::asynch::{Config as DriverConfig, Driver};
 use esp_hal::otg_fs::Usb;
 use esp_hal::timer::timg::TimerGroup;
+use esp_hal_embassy::InterruptExecutor;
 use static_cell::StaticCell;
 use cw_adapter::common::{CwApp, LaunchMode};
 #[cfg(feature = "gamepad")]
@@ -72,10 +74,25 @@ fn defmt_panic() -> ! {
     loop {}
 }
 
+/// USB device task — runs at thread-mode (lowest) priority.
 #[embassy_executor::task]
 async fn usb_task(mut usb: embassy_usb::UsbDevice<'static, Driver<'static>>) {
     usb.run().await;
 }
+
+/// Keying task — runs at elevated priority via InterruptExecutor so that USB
+/// enumeration/control work in `usb_task` cannot delay key reads or MIDI writes.
+#[embassy_executor::task]
+async fn keying_task(
+    mut app: CwApp<'static, Driver<'static>>,
+    dit_pin: Input<'static>,
+    dah_pin: Input<'static>,
+) {
+    app.run(|| dit_pin.is_low(), || dah_pin.is_low()).await;
+}
+
+/// InterruptExecutor running on SWI0 at Priority2 (above thread-mode Priority1).
+static INT_EXECUTOR: StaticCell<InterruptExecutor<0>> = StaticCell::new();
 
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
@@ -83,6 +100,9 @@ async fn main(spawner: Spawner) {
 
     let timg0 = TimerGroup::new(peripherals.TIMG0);
     esp_hal_embassy::init(timg0.timer0);
+
+    // Obtain software interrupt 0 for the high-priority executor.
+    let sw_ints = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
 
     // 1. Initial Launch Mode Detection
     // Three mode-select pins, all pull-up (connect to GND to activate).
@@ -206,24 +226,30 @@ async fn main(spawner: Spawner) {
 
     #[cfg(feature = "midi")]
     let midi = if matches!(launch_mode, LaunchMode::Composite | LaunchMode::MidiOnly) {
-        use embassy_usb::class::midi::MidiClass;
+        use cw_adapter::midi_interrupt::MidiInterruptClass;
         // n_in_jacks=1 (device→host, keyer events), n_out_jacks=0 (host→device, unused).
-        // NOTE: embassy-usb 0.4.0 always allocates both bulk endpoints regardless of jack counts,
-        // so the OUT endpoint exists but is never read.
-        Some(MidiClass::new(&mut builder, 1, 0, 64))
+        // Interrupt endpoint with poll_ms=1 guarantees 1 ms host polling (unlike bulk).
+        Some(MidiInterruptClass::new(&mut builder, 1, 0, 64, 1))
     } else {
         None
     };
 
     // 4. Build & Spawn
     let usb = builder.build();
+
+    // USB device task runs at default thread-mode priority (Priority1).
     spawner.spawn(usb_task(usb)).unwrap();
 
-    // 5. Run App
+    // 5. Run keying task at elevated priority via InterruptExecutor.
+    // SoftwareInterrupt<0> drives the executor at Priority2, ensuring key reads
+    // and MIDI/HID writes preempt USB enumeration/control work.
+    let int_executor = INT_EXECUTOR.init(InterruptExecutor::new(sw_ints.software_interrupt0));
+    let hi_spawner = int_executor.start(esp_hal::interrupt::Priority::Priority2);
+
     let dit_pin = Input::new(peripherals.GPIO4, Pull::Up);
     let dah_pin = Input::new(peripherals.GPIO5, Pull::Up);
 
-    let mut app = CwApp {
+    let app = CwApp {
         #[cfg(feature = "keyboard")]
         keyboard,
         #[cfg(feature = "gamepad")]
@@ -234,5 +260,10 @@ async fn main(spawner: Spawner) {
         midi,
     };
 
-    app.run(|| dit_pin.is_low(), || dah_pin.is_low()).await;
+    hi_spawner.spawn(keying_task(app, dit_pin, dah_pin)).unwrap();
+
+    // Main thread has nothing left to do — yield forever.
+    loop {
+        embassy_time::Timer::after(embassy_time::Duration::from_secs(3600)).await;
+    }
 }

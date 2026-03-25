@@ -10,7 +10,7 @@ use usbd_hid::descriptor::KeyboardReport;
 use crate::cdc_serial_state::CdcWithSerialState;
 
 #[cfg(feature = "midi")]
-use embassy_usb::class::midi::MidiClass;
+use crate::midi_interrupt::MidiInterruptClass;
 
 // MIDI note numbers (vail-adapter convention: C4=dit, D4=dah)
 #[cfg(feature = "midi")]
@@ -103,7 +103,7 @@ pub struct CwApp<'a, D: Driver<'a>> {
     #[cfg(feature = "serial")]
     pub serial: Option<CdcWithSerialState<'a, D>>,
     #[cfg(feature = "midi")]
-    pub midi: Option<MidiClass<'a, D>>,
+    pub midi: Option<MidiInterruptClass<'a, D>>,
 }
 
 impl<'a, D: Driver<'a>> CwApp<'a, D> {
@@ -113,8 +113,8 @@ impl<'a, D: Driver<'a>> CwApp<'a, D> {
         mut dah_paddle: impl FnMut() -> bool,
     ) -> ! {
         // Paddles are active-low (Pull::Up). At rest is_low() == false == not pressed.
-        let mut dit_debounce = Debouncer::new(false, 5);
-        let mut dah_debounce = Debouncer::new(false, 5);
+        let mut dit_debounce = Debouncer::new(false, 8);
+        let mut dah_debounce = Debouncer::new(false, 8);
 
         #[cfg(feature = "serial")]
         let mut prev_dit_ser = false;
@@ -190,7 +190,6 @@ impl<'a, D: Driver<'a>> CwApp<'a, D> {
                             &[0x08, 0x80, MIDI_NOTE_DIT, 0x00]
                         });
                         len += 4;
-                        prev_dit = dit_pressed;
                     }
                     if dah_changed {
                         buf[len..len + 4].copy_from_slice(if dah_pressed {
@@ -199,13 +198,22 @@ impl<'a, D: Driver<'a>> CwApp<'a, D> {
                             &[0x08, 0x80, MIDI_NOTE_DAH, 0x00]
                         });
                         len += 4;
-                        prev_dah = dah_pressed;
                     }
-                    midi.write_packet(&buf[..len]).await.ok();
+                    match midi.write_packet(&buf[..len]).await {
+                        Ok(()) => {
+                            if dit_changed { prev_dit = dit_pressed; }
+                            if dah_changed { prev_dah = dah_pressed; }
+                        }
+                        Err(_) => {
+                            // Reset so we re-send state after reconnect.
+                            prev_dit = false;
+                            prev_dah = false;
+                        }
+                    }
                 }
             }
 
-            Timer::after(Duration::from_millis(1)).await;
+            Timer::after(Duration::from_micros(250)).await;
         }
     }
 }

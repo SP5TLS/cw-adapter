@@ -7,7 +7,7 @@
 //! This class is a minimal replacement that keeps the interrupt endpoint and exposes
 //! `send_serial_state(dcd, dsr)` for signalling paddle state via modem control lines.
 
-use core::cell::Cell;
+use core::sync::atomic::AtomicU8;
 use core::mem::MaybeUninit;
 use core::sync::atomic::{AtomicBool, Ordering};
 
@@ -66,7 +66,10 @@ struct ControlShared {
     rts: AtomicBool,
     /// The interface number, stored here so the notification sender can embed
     /// it in the wIndex field of each SERIAL_STATE packet.
-    comm_if: Cell<u8>,
+    /// Written once during `CdcWithSerialState::new()` before any task reads it;
+    /// `Relaxed` ordering is safe because task spawning provides the necessary
+    /// happens-before synchronisation.
+    comm_if: AtomicU8,
 }
 
 impl Default for ControlShared {
@@ -74,7 +77,7 @@ impl Default for ControlShared {
         Self {
             dtr: AtomicBool::new(false),
             rts: AtomicBool::new(false),
-            comm_if: Cell::new(0),
+            comm_if: AtomicU8::new(0),
         }
     }
 }
@@ -200,7 +203,7 @@ impl<'d, D: Driver<'d>> CdcWithSerialState<'d, D> {
 
         drop(func);
 
-        state.shared.comm_if.set(comm_if.into());
+        state.shared.comm_if.store(comm_if.into(), core::sync::atomic::Ordering::Relaxed);
 
         let control = state.control.write(Control {
             shared: &state.shared,
@@ -255,7 +258,7 @@ impl<'d, D: Driver<'d>> CdcWithSerialState<'d, D> {
         //   [4-5] wIndex = interface number
         //   [6-7] wLength = 2
         //   [8-9] data = 16-bit state bitmask (LE)
-        let iface = self.control.comm_if.get();
+        let iface = self.control.comm_if.load(core::sync::atomic::Ordering::Relaxed);
         let packet: [u8; 10] = [
             0xA1,
             NOTIF_SERIAL_STATE,

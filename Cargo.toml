@@ -43,6 +43,7 @@ rp2040 = [
     "dep:defmt-rtt",
     "dep:panic-probe",
     "embassy-executor/arch-cortex-m",
+    "embassy-executor/executor-interrupt",
 ]
 esp32s3 = ["dep:esp-hal", "dep:esp-hal-embassy", "dep:esp-backtrace", "dep:esp-println"]
 
