@@ -9,6 +9,14 @@ use podsdr_keyer::{KeyerEngine, KeyerMode, KeyerOutput};
 // MIDI note for the formed key-line signal (C4)
 const MIDI_NOTE_KEY: u8 = 60;
 
+// --- Button timing constants (in ms / ticks) ---
+const BTN_INITIAL_DELAY: u16 = 500;
+const BTN_REPEAT_RATE: u16 = 100;
+const BTN_BOTH_WINDOW: u16 = 50;
+
+const SPEED_MIN: u8 = 5;
+const SPEED_MAX: u8 = 60;
+
 // --- MIDI CC settings protocol ---
 // Settings are received as MIDI CC on channel 16 (status 0xBF).
 // USB-MIDI packet: [CIN_status, 0xBF, cc_number, value]
@@ -66,7 +74,7 @@ pub fn parse_midi_cc(packet: &[u8]) -> Option<ConfigUpdate> {
             };
             Some(ConfigUpdate::Mode(mode))
         }
-        CC_SPEED_WPM => Some(ConfigUpdate::SpeedWpm(val.clamp(5, 60))),
+        CC_SPEED_WPM => Some(ConfigUpdate::SpeedWpm(val.clamp(SPEED_MIN, SPEED_MAX))),
         CC_WEIGHT => Some(ConfigUpdate::Weight(val.clamp(25, 75))),
         CC_KEYS_REVERSED => Some(ConfigUpdate::KeysReversed(val != 0)),
         CC_IAMBIC_B_TIMING => Some(ConfigUpdate::IambicBTiming(val.min(100))),
@@ -91,6 +99,17 @@ fn apply_config_update(engine: &mut KeyerEngine, update: ConfigUpdate) {
         ConfigUpdate::HangTime(v) => engine.config.hang_time_ms = v,
         ConfigUpdate::AutoSpacing(v) => engine.config.auto_spacing = v,
         ConfigUpdate::DynamicRatio(v) => engine.config.dynamic_ratio = v,
+    }
+}
+
+fn next_keyer_mode(mode: KeyerMode) -> KeyerMode {
+    match mode {
+        KeyerMode::IambicB => KeyerMode::IambicA,
+        KeyerMode::IambicA => KeyerMode::Straight,
+        KeyerMode::Straight => KeyerMode::Bug,
+        KeyerMode::Bug => KeyerMode::Ultimatic,
+        KeyerMode::Ultimatic => KeyerMode::SinglePaddle,
+        KeyerMode::SinglePaddle => KeyerMode::IambicB,
     }
 }
 
@@ -126,43 +145,166 @@ impl Debouncer {
     }
 }
 
+// --- Button auto-repeat state ---
+
+struct ButtonRepeat {
+    held_ms: u16,
+    fired_initial: bool,
+}
+
+impl ButtonRepeat {
+    fn new() -> Self {
+        Self { held_ms: 0, fired_initial: false }
+    }
+
+    /// Tick while the button is held. Returns true when the action should fire.
+    fn tick_held(&mut self) -> bool {
+        self.held_ms = self.held_ms.saturating_add(1);
+        if !self.fired_initial {
+            if self.held_ms >= BTN_INITIAL_DELAY {
+                self.fired_initial = true;
+                self.held_ms = 0;
+                return true;
+            }
+        } else if self.held_ms >= BTN_REPEAT_RATE {
+            self.held_ms = 0;
+            return true;
+        }
+        false
+    }
+
+    fn reset(&mut self) {
+        self.held_ms = 0;
+        self.fired_initial = false;
+    }
+}
+
 // --- Keyer App ---
 
 pub struct KeyerApp<'a, D: Driver<'a>> {
     pub midi: MidiInterruptClass<'a, D>,
     pub engine: KeyerEngine,
+    pub sidetone_enabled: bool,
 }
 
 impl<'a, D: Driver<'a>> KeyerApp<'a, D> {
+    /// Main keyer loop.
+    ///
+    /// - `dit_paddle` / `dah_paddle`: active-low paddle inputs (true = pressed)
+    /// - `btn_a` / `btn_b`: command buttons (true = pressed)
+    /// - `set_buzzer`: called with `true` to start the sidetone and `false` to stop it
     pub async fn run(
         &mut self,
         mut dit_paddle: impl FnMut() -> bool,
         mut dah_paddle: impl FnMut() -> bool,
+        mut btn_a: impl FnMut() -> bool,
+        mut btn_b: impl FnMut() -> bool,
+        mut set_buzzer: impl FnMut(bool),
     ) -> ! {
         let mut dit_debounce = Debouncer::new(false, 8);
         let mut dah_debounce = Debouncer::new(false, 8);
+        let mut btn_a_debounce = Debouncer::new(false, 20);
+        let mut btn_b_debounce = Debouncer::new(false, 20);
+
         let mut prev_key_down = false;
+        let mut prev_btn_a = false;
+        let mut prev_btn_b = false;
+        let mut btn_a_repeat = ButtonRepeat::new();
+        let mut btn_b_repeat = ButtonRepeat::new();
+        // Tracks ms since one button was pressed alone, for both-pressed detection
+        let mut single_btn_ms: u16 = 0;
+        let mut both_handled = false;
+
         let mut ticker = Ticker::every(Duration::from_millis(1));
 
         loop {
             ticker.next().await;
 
-            // Read and debounce paddles
+            // 1. Read and debounce paddles
             let dit_pressed = dit_debounce.update(dit_paddle());
             let dah_pressed = dah_debounce.update(dah_paddle());
 
-            // Feed paddles to keyer engine
+            // 2. Read and debounce buttons
+            let a_pressed = btn_a_debounce.update(btn_a());
+            let b_pressed = btn_b_debounce.update(btn_b());
+            let a_rising = a_pressed && !prev_btn_a;
+            let b_rising = b_pressed && !prev_btn_b;
+            let a_falling = !a_pressed && prev_btn_a;
+            let b_falling = !b_pressed && prev_btn_b;
+
+            // 3. Button logic: both-pressed detection and auto-repeat
+            if a_pressed && b_pressed {
+                // Both pressed — cycle mode (once per press)
+                if !both_handled {
+                    both_handled = true;
+                    self.engine.config.mode = next_keyer_mode(self.engine.config.mode);
+                    defmt::info!("Mode: {}", self.engine.config.mode as u8);
+                }
+                btn_a_repeat.reset();
+                btn_b_repeat.reset();
+                single_btn_ms = 0;
+            } else if a_pressed && !b_pressed {
+                if a_rising {
+                    // First press — fire immediately
+                    single_btn_ms = 0;
+                    if self.engine.config.speed_wpm > SPEED_MIN {
+                        self.engine.config.speed_wpm -= 1;
+                        defmt::info!("Speed: {} WPM", self.engine.config.speed_wpm);
+                    }
+                } else {
+                    single_btn_ms = single_btn_ms.saturating_add(1);
+                    if single_btn_ms > BTN_BOTH_WINDOW && btn_a_repeat.tick_held() {
+                        if self.engine.config.speed_wpm > SPEED_MIN {
+                            self.engine.config.speed_wpm -= 1;
+                        }
+                    }
+                }
+                btn_b_repeat.reset();
+            } else if b_pressed && !a_pressed {
+                if b_rising {
+                    single_btn_ms = 0;
+                    if self.engine.config.speed_wpm < SPEED_MAX {
+                        self.engine.config.speed_wpm += 1;
+                        defmt::info!("Speed: {} WPM", self.engine.config.speed_wpm);
+                    }
+                } else {
+                    single_btn_ms = single_btn_ms.saturating_add(1);
+                    if single_btn_ms > BTN_BOTH_WINDOW && btn_b_repeat.tick_held() {
+                        if self.engine.config.speed_wpm < SPEED_MAX {
+                            self.engine.config.speed_wpm += 1;
+                        }
+                    }
+                }
+                btn_a_repeat.reset();
+            } else {
+                // Neither pressed
+                btn_a_repeat.reset();
+                btn_b_repeat.reset();
+                both_handled = false;
+                single_btn_ms = 0;
+            }
+
+            if a_falling || b_falling {
+                // Reset repeat on any release
+                btn_a_repeat.reset();
+                btn_b_repeat.reset();
+            }
+
+            prev_btn_a = a_pressed;
+            prev_btn_b = b_pressed;
+
+            // 4. Feed paddles to keyer engine
             self.engine.set_paddle(dit_pressed, dah_pressed);
 
-            // Check for config updates from MIDI settings task
+            // 5. Check for config updates from MIDI settings task
             while let Ok(update) = CONFIG_CHANNEL.try_receive() {
                 apply_config_update(&mut self.engine, update);
             }
 
-            // Tick the keyer engine (1ms per tick)
+            // 6. Tick the keyer engine (1ms per tick)
             let output = self.engine.tick();
 
-            // Map keyer output to MIDI
+            // 7. Map keyer output to MIDI + buzzer
             let key_down = match output {
                 Some(KeyerOutput::KeyDown) => true,
                 Some(KeyerOutput::KeyUp) => false,
@@ -174,6 +316,12 @@ impl<'a, D: Driver<'a>> KeyerApp<'a, D> {
             }
             prev_key_down = key_down;
 
+            // Drive buzzer
+            if self.sidetone_enabled {
+                set_buzzer(key_down);
+            }
+
+            // Send MIDI
             let packet = if key_down {
                 [0x09, 0x90, MIDI_NOTE_KEY, 0x7F] // Note On
             } else {

@@ -22,12 +22,14 @@ cortex-m = { version = "0.7.7", optional = true }
 cortex-m-rt = { version = "0.7.3", optional = true }
 defmt-rtt = { version = "0.4.1", optional = true }
 panic-probe = { version = "0.3.2", features = ["print-defmt"], optional = true }
+fixed = { version = "1", default-features = false, optional = true }
 
 # ESP32-S3
 esp-hal = { version = "0.23.0", features = ["esp32s3", "defmt"], optional = true }
 esp-hal-embassy = { version = "0.6.0", features = ["esp32s3", "defmt"], optional = true }
 esp-backtrace = { version = "0.15.0", features = ["esp32s3", "panic-handler", "exception-handler", "defmt"], optional = true }
 esp-println = { version = "0.13.0", features = ["esp32s3", "defmt-espflash"], optional = true }
+fugit = { version = "0.3", optional = true }
 
 [features]
 default = ["keyboard", "gamepad", "serial", "midi", "defmt"]
@@ -44,10 +46,11 @@ rp2040 = [
     "dep:cortex-m-rt",
     "dep:defmt-rtt",
     "dep:panic-probe",
+    "dep:fixed",
     "embassy-executor/arch-cortex-m",
     "embassy-executor/executor-interrupt",
 ]
-esp32s3 = ["dep:esp-hal", "dep:esp-hal-embassy", "dep:esp-backtrace", "dep:esp-println"]
+esp32s3 = ["dep:esp-hal", "dep:esp-hal-embassy", "dep:esp-backtrace", "dep:esp-println", "dep:fugit"]
 
 [[bin]]
 name = "rp2040"

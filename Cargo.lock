@@ -235,6 +235,8 @@ dependencies = [
  "esp-hal",
  "esp-hal-embassy",
  "esp-println",
+ "fixed",
+ "fugit",
  "panic-probe",
  "podsdr-keyer",
  "portable-atomic",

@@ -6,16 +6,25 @@ use embassy_executor::Spawner;
 use embassy_usb::Builder;
 use esp_hal::gpio::{Input, Pull};
 use esp_hal::interrupt::software::SoftwareInterruptControl;
+use esp_hal::ledc::{Ledc, LSGlobalClkSource, LowSpeed};
+use esp_hal::ledc::channel::{self, ChannelIFace};
+use esp_hal::ledc::timer::{self, TimerIFace};
 use esp_hal::otg_fs::asynch::{Config as DriverConfig, Driver};
 use esp_hal::otg_fs::Usb;
 use esp_hal::timer::timg::TimerGroup;
 use esp_hal_embassy::InterruptExecutor;
+use fugit::RateExtU32;
 use static_cell::StaticCell;
 use cw_adapter::keyer_app::KeyerApp;
 use cw_adapter::midi_interrupt::MidiInterruptClass;
 use podsdr_keyer::{KeyerConfig, KeyerEngine};
 
 use {esp_backtrace as _, esp_println as _};
+
+/// Wrapper to make LEDC Channel Send-able for the InterruptExecutor.
+/// Safety: the channel is only accessed from the single keying task.
+struct SendChannel(channel::Channel<'static, LowSpeed>);
+unsafe impl Send for SendChannel {}
 
 // IDF bootloader app descriptor (see esp32s3.rs for full documentation).
 #[repr(C)]
@@ -73,8 +82,20 @@ async fn keying_task(
     mut app: KeyerApp<'static, Driver<'static>>,
     dit_pin: Input<'static>,
     dah_pin: Input<'static>,
+    btn_a_pin: Input<'static>,
+    btn_b_pin: Input<'static>,
+    buzzer: SendChannel,
 ) {
-    app.run(|| dit_pin.is_low(), || dah_pin.is_low()).await;
+    let buzzer_channel = buzzer.0;
+    app.run(
+        || dit_pin.is_low(),
+        || dah_pin.is_low(),
+        || btn_a_pin.is_low(),
+        || btn_b_pin.is_low(),
+        |on| {
+            let _ = buzzer_channel.set_duty(if on { 50 } else { 0 });
+        },
+    ).await;
 }
 
 /// MIDI settings reader task — reads incoming MIDI CC on channel 16.
@@ -106,6 +127,12 @@ async fn midi_settings_task(
 /// InterruptExecutor running on SWI0 at Priority2 (above thread-mode Priority1).
 static INT_EXECUTOR: StaticCell<InterruptExecutor<0>> = StaticCell::new();
 
+// LEDC timer needs 'static lifetime for the channel to be 'static
+static LEDC_STATIC: StaticCell<Ledc<'static>> = StaticCell::new();
+
+type LsTimer = timer::Timer<'static, LowSpeed>;
+static TIMER_STATIC: StaticCell<LsTimer> = StaticCell::new();
+
 #[esp_hal_embassy::main]
 async fn main(spawner: Spawner) {
     let peripherals = esp_hal::init(esp_hal::Config::default());
@@ -116,6 +143,25 @@ async fn main(spawner: Spawner) {
     let sw_ints = SoftwareInterruptControl::new(peripherals.SW_INTERRUPT);
 
     info!("CW Keyer (MIDI) starting");
+
+    // LEDC buzzer on GPIO6 — 600 Hz square wave
+    let ledc = LEDC_STATIC.init(Ledc::new(peripherals.LEDC));
+    ledc.set_global_slow_clock(LSGlobalClkSource::APBClk);
+
+    let mut lstimer0 = ledc.timer::<LowSpeed>(timer::Number::Timer0);
+    lstimer0.configure(timer::config::Config {
+        duty: timer::config::Duty::Duty8Bit,
+        clock_source: timer::LSClockSource::APBClk,
+        frequency: 600u32.Hz(),
+    }).unwrap();
+    let lstimer0 = TIMER_STATIC.init(lstimer0);
+
+    let mut buzzer_channel = ledc.channel(channel::Number::Channel0, peripherals.GPIO6);
+    buzzer_channel.configure(channel::config::Config {
+        timer: lstimer0,
+        duty_pct: 0,
+        pin_config: channel::config::PinConfig::PushPull,
+    }).unwrap();
 
     // USB Driver & Config
     let usb = Usb::new(peripherals.USB0, peripherals.GPIO20, peripherals.GPIO19);
@@ -128,7 +174,6 @@ async fn main(spawner: Spawner) {
     config.serial_number = Some("87654321");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
-    // Single-function MIDI device
     config.device_class = 0x00;
     config.device_sub_class = 0x00;
     config.device_protocol = 0x00;
@@ -151,7 +196,6 @@ async fn main(spawner: Spawner) {
     let mut midi_class = MidiInterruptClass::new(&mut builder, 1, 1, 64, 1);
     let midi_read_ep = midi_class.take_read_ep();
 
-    // Build & Spawn
     let usb = builder.build();
     spawner.spawn(usb_task(usb)).unwrap();
 
@@ -161,16 +205,18 @@ async fn main(spawner: Spawner) {
 
     let dit_pin = Input::new(peripherals.GPIO4, Pull::Up);
     let dah_pin = Input::new(peripherals.GPIO5, Pull::Up);
+    let btn_a_pin = Input::new(peripherals.GPIO7, Pull::Up);
+    let btn_b_pin = Input::new(peripherals.GPIO8, Pull::Up);
 
     let engine = KeyerEngine::new(KeyerConfig::default());
     let app = KeyerApp {
         midi: midi_class,
         engine,
+        sidetone_enabled: true,
     };
 
-    hi_spawner.spawn(keying_task(app, dit_pin, dah_pin)).unwrap();
+    hi_spawner.spawn(keying_task(app, dit_pin, dah_pin, btn_a_pin, btn_b_pin, SendChannel(buzzer_channel))).unwrap();
 
-    // MIDI settings reader on the main executor
     if let Some(read_ep) = midi_read_ep {
         spawner.spawn(midi_settings_task(read_ep)).unwrap();
     }
