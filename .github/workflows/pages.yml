@@ -57,13 +57,14 @@ jobs:
       - name: Generate manifests
         run: |
           SHORT_SHA=$(git rev-parse --short HEAD)
-          for feat in all keyboard gamepad serial midi; do
+          for feat in all keyboard gamepad serial midi keyer; do
             case $feat in
               all)      label="All Features (Keyboard + Gamepad + Serial CDC + MIDI)" ;;
               keyboard) label="Keyboard Only" ;;
               gamepad)  label="Gamepad Only" ;;
               serial)   label="Serial CDC Only" ;;
               midi)     label="MIDI Only" ;;
+              keyer)    label="CW Keyer (MIDI)" ;;
             esac
             jq -n \
               --arg name "UC CW Interface – $label" \

@@ -12,7 +12,7 @@ jobs:
     strategy:
       matrix:
         target: [thumbv6m-none-eabi, xtensa-esp32s3-none-elf]
-        feature_set: [all, keyboard, gamepad, serial, midi]
+        feature_set: [all, keyboard, gamepad, serial, midi, keyer]
     steps:
       - uses: actions/checkout@v4
 
@@ -38,21 +38,29 @@ jobs:
         if: matrix.target == 'thumbv6m-none-eabi'
         run: |
           FEATURES="rp2040,defmt"
+          BIN="rp2040"
           if [ "${{ matrix.feature_set }}" == "all" ]; then
             FEATURES="$FEATURES,keyboard,gamepad,serial,midi"
+          elif [ "${{ matrix.feature_set }}" == "keyer" ]; then
+            FEATURES="$FEATURES,keyer"
+            BIN="rp2040-keyer"
           else
             FEATURES="$FEATURES,${{ matrix.feature_set }}"
           fi
-          rustup run nightly cargo build --release --target thumbv6m-none-eabi --no-default-features --features "$FEATURES"
+          rustup run nightly cargo build --release --target thumbv6m-none-eabi --no-default-features --features "$FEATURES" --bin "$BIN"
 
       - name: Build ESP32-S3
         if: matrix.target == 'xtensa-esp32s3-none-elf'
         run: |
           source $HOME/export-esp.sh
           FEATURES="esp32s3,defmt"
+          BIN="esp32s3"
           if [ "${{ matrix.feature_set }}" == "all" ]; then
             FEATURES="$FEATURES,keyboard,gamepad,serial,midi"
+          elif [ "${{ matrix.feature_set }}" == "keyer" ]; then
+            FEATURES="$FEATURES,keyer"
+            BIN="esp32s3-keyer"
           else
             FEATURES="$FEATURES,${{ matrix.feature_set }}"
           fi
-          rustup run esp cargo build --release --target xtensa-esp32s3-none-elf --no-default-features --features "$FEATURES" -Zbuild-std=core
+          rustup run esp cargo build --release --target xtensa-esp32s3-none-elf --no-default-features --features "$FEATURES" --bin "$BIN" -Zbuild-std=core

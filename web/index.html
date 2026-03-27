@@ -327,6 +327,13 @@
             <span>USB MIDI — Note On/Off ch 1, note 60 (dit) &amp; 62 (dah); works with deskHPSDR, Thetis, Vail</span>
           </div>
         </label>
+        <label class="variant">
+          <input type="radio" name="variant" value="keyer">
+          <div>
+            <strong>CW Keyer (MIDI)</strong>
+            <span>Built-in iambic keyer — outputs formed CW via MIDI Note On/Off; settings via MIDI CC on ch 16</span>
+          </div>
+        </label>
       </div>
 
       <div id="mode-pin-info">
@@ -408,6 +415,10 @@
         <a class="uf2-btn" href="firmware-rp2040-serial.uf2" download>
           <strong>&#11015; Serial CDC</strong>
           <span>USB serial port only</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2040-keyer.uf2" download>
+          <strong>&#11015; CW Keyer</strong>
+          <span>Built-in iambic keyer via MIDI</span>
         </a>
       </div>
     </div>

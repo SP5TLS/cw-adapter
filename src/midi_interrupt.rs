@@ -210,6 +210,14 @@ impl<'d, D: Driver<'d>> MidiInterruptClass<'d, D> {
         }
     }
 
+    /// Take the OUT (read) endpoint out of this class for use in a separate task.
+    ///
+    /// Returns `None` if no OUT endpoint was allocated (n_out_jacks was 0)
+    /// or if it was already taken.
+    pub fn take_read_ep(&mut self) -> Option<D::EndpointOut> {
+        self.read_ep.take()
+    }
+
     /// Waits for the USB host to enable this interface.
     pub async fn wait_connection(&mut self) {
         self.write_ep.wait_enabled().await;

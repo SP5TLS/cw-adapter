@@ -33,6 +33,25 @@ for feat in all keyboard gamepad serial midi; do
     python3 /app/scripts/trim-binary.py /app/_site/firmware-${feat}.bin
 done
 
+echo "=== Building ESP32-S3 keyer ==="
+cargo +esp build --release \
+    --target xtensa-esp32s3-none-elf \
+    --no-default-features \
+    --features "esp32s3,defmt,keyer" \
+    --bin esp32s3-keyer \
+    -Zbuild-std=core
+
+echo "=== Generating merged flash image for keyer ==="
+espflash save-image \
+    --chip esp32s3 \
+    --ignore-app-descriptor \
+    --merge \
+    target/xtensa-esp32s3-none-elf/release/esp32s3-keyer \
+    /app/_site/firmware-keyer.bin
+
+python3 /app/scripts/patch_esp32s3.py /app/_site/firmware-keyer.bin /app/_site/firmware-keyer.bin --offset 0x10000
+python3 /app/scripts/trim-binary.py /app/_site/firmware-keyer.bin
+
 echo "=== Building RP2040 variants ==="
 for feat in all keyboard gamepad serial midi; do
     BUILD_FEAT="rp2040,defmt"
@@ -52,6 +71,18 @@ for feat in all keyboard gamepad serial midi; do
         target/thumbv6m-none-eabi/release/rp2040 \
         /app/_site/firmware-rp2040-${feat}.uf2
 done
+
+echo "=== Building RP2040 keyer ==="
+cargo +nightly build --release \
+    --target thumbv6m-none-eabi \
+    --no-default-features \
+    --features "rp2040,defmt,keyer" \
+    --bin rp2040-keyer
+
+echo "=== Converting keyer to UF2 ==="
+elf2uf2-rs \
+    target/thumbv6m-none-eabi/release/rp2040-keyer \
+    /app/_site/firmware-rp2040-keyer.uf2
 
 echo "=== Done ==="
 ls -lh /app/_site/firmware-*.bin /app/_site/firmware-*.uf2
