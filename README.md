@@ -1,4 +1,4 @@
-# CW Interface (RP2040 & ESP32-S3)
+# CW Interface (RP2040 / RP2350 / ESP32-S3)
 
 This project implements a low-latency CW (Morse code) interface that appears as a composite USB device:
 1. **HID Keyboard**: Sends 'z' for Dit and 'x' for Dah (HID keycodes 0x1D / 0x1B; actual character depends on host Caps Lock / Shift state, typically lowercase).
@@ -8,12 +8,15 @@ This project implements a low-latency CW (Morse code) interface that appears as 
 
 ## Pinout
 
-### RP2040 (e.g., Raspberry Pi Pico)
+### RP2040 / RP2350 (e.g., Raspberry Pi Pico, Pico 2)
+Same wiring on both chips.
 - **GP14**: Dit Paddle (active low)
 - **GP15**: Dah Paddle (active low)
 - **GP16**: Mode Switch S0 (see table below)
 - **GP17**: Mode Switch S1 (see table below)
 - **GP18**: Mode Switch S2 (see table below)
+
+The RP2350 build targets RP2350A (QFN-60, Pico 2 silicon). For RP2350B (QFN-80) boards, change `embassy-rp/rp235xa` to `embassy-rp/rp235xb` in `Cargo.toml`.
 
 ### ESP32-S3
 - **GPIO4**: Dit Paddle (active low)
@@ -59,6 +62,26 @@ cargo build --bin rp2040 --no-default-features --features rp2040,serial,defmt --
 cargo build --bin rp2040 --no-default-features --features rp2040,midi,defmt --target thumbv6m-none-eabi
 ```
 
+### For RP2350 (Pico 2):
+```bash
+# All interfaces (runtime mode switch selects which one is active)
+cargo build --bin rp2350 --no-default-features --features rp2350,defmt,keyboard,gamepad,serial,midi --target thumbv8m.main-none-eabihf
+
+# Keyboard only
+cargo build --bin rp2350 --no-default-features --features rp2350,keyboard,defmt --target thumbv8m.main-none-eabihf
+
+# Gamepad only
+cargo build --bin rp2350 --no-default-features --features rp2350,gamepad,defmt --target thumbv8m.main-none-eabihf
+
+# Serial only
+cargo build --bin rp2350 --no-default-features --features rp2350,serial,defmt --target thumbv8m.main-none-eabihf
+
+# MIDI only
+cargo build --bin rp2350 --no-default-features --features rp2350,midi,defmt --target thumbv8m.main-none-eabihf
+```
+
+The UF2 conversion uses `elf2uf2-rs` followed by `python3 scripts/patch_uf2_family.py <file.uf2> 0xe48bff59` to rewrite the family ID from RP2040 to RP2350-ARM-S. The Pico 2 BOOTSEL drive rejects RP2040 family IDs.
+
 ### For ESP32-S3:
 Note: Requires Xtensa toolchain.
 ```bash
@@ -83,6 +106,11 @@ cargo build --bin esp32s3 --no-default-features --features esp32s3,midi,defmt --
 ### For RP2040:
 ```bash
 probe-rs run --chip RP2040 --bin rp2040 --features rp2040
+```
+
+### For RP2350 (Pico 2):
+```bash
+probe-rs run --chip RP235x --bin rp2350 --features rp2350
 ```
 
 ### For ESP32-S3:

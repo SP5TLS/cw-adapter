@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [thumbv6m-none-eabi, xtensa-esp32s3-none-elf]
+        target: [thumbv6m-none-eabi, thumbv8m.main-none-eabihf, xtensa-esp32s3-none-elf]
         feature_set: [all, keyboard, gamepad, serial, midi]
     steps:
       - uses: actions/checkout@v4
@@ -22,6 +22,13 @@ jobs:
         with:
           toolchain: nightly
           targets: thumbv6m-none-eabi
+
+      - name: Install Rust (RP2350)
+        if: matrix.target == 'thumbv8m.main-none-eabihf'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          targets: thumbv8m.main-none-eabihf
 
       - name: Install Xtensa toolchain
         if: matrix.target == 'xtensa-esp32s3-none-elf'
@@ -43,7 +50,18 @@ jobs:
           else
             FEATURES="$FEATURES,${{ matrix.feature_set }}"
           fi
-          rustup run nightly cargo build --release --target thumbv6m-none-eabi --no-default-features --features "$FEATURES"
+          rustup run nightly cargo build --release --target thumbv6m-none-eabi --no-default-features --features "$FEATURES" --bin rp2040
+
+      - name: Build RP2350
+        if: matrix.target == 'thumbv8m.main-none-eabihf'
+        run: |
+          FEATURES="rp2350,defmt"
+          if [ "${{ matrix.feature_set }}" == "all" ]; then
+            FEATURES="$FEATURES,keyboard,gamepad,serial,midi"
+          else
+            FEATURES="$FEATURES,${{ matrix.feature_set }}"
+          fi
+          rustup run nightly cargo build --release --target thumbv8m.main-none-eabihf --no-default-features --features "$FEATURES" --bin rp2350
 
       - name: Build ESP32-S3
         if: matrix.target == 'xtensa-esp32s3-none-elf'
@@ -55,4 +73,4 @@ jobs:
           else
             FEATURES="$FEATURES,${{ matrix.feature_set }}"
           fi
-          rustup run esp cargo build --release --target xtensa-esp32s3-none-elf --no-default-features --features "$FEATURES" -Zbuild-std=core
+          rustup run esp cargo build --release --target xtensa-esp32s3-none-elf --no-default-features --features "$FEATURES" -Zbuild-std=core --bin esp32s3

@@ -271,7 +271,7 @@
 
     <header>
       <h1>UC CW Interface</h1>
-      <p>ESP32-S3 browser flasher &middot; RP2040 UF2 downloads &mdash; no software to install</p>
+      <p>ESP32-S3 browser flasher &middot; RP2040 / RP2350 UF2 downloads &mdash; no software to install</p>
     </header>
 
     <!-- ESP32-S3 section -->
@@ -470,6 +470,88 @@
           <span>USB HID gamepad only</span>
         </a>
         <a class="uf2-btn" href="firmware-rp2040-serial.uf2" download>
+          <strong>&#11015; Serial CDC</strong>
+          <span>USB serial port only</span>
+        </a>
+      </div>
+    </div>
+
+    <!-- RP2350 section -->
+    <p class="platform-heading">Raspberry Pi Pico 2 / RP2350 &mdash; UF2 drag-and-drop</p>
+
+    <!-- Pinout -->
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">&#9889;</span>
+        <h2>Pinout</h2>
+      </div>
+      <div class="pinout">
+        <p>Same wiring as the original Pico. All inputs use the RP2350's internal pull-ups; connect each pin to <strong>GND</strong> through the paddle contact or jumper. Pin numbers are GPIO numbers (e.g. GP14 = physical pin&nbsp;19 on the Pico&nbsp;2).</p>
+        <table>
+          <thead><tr><th>Pin</th><th>Function</th></tr></thead>
+          <tbody>
+            <tr><td>GP14</td><td>Dit paddle &mdash; tip / left contact, active low</td></tr>
+            <tr><td>GP15</td><td>Dah paddle &mdash; ring / right contact, active low</td></tr>
+            <tr><td>GP16</td><td>Mode switch S0 &mdash; see table below</td></tr>
+            <tr><td>GP17</td><td>Mode switch S1 &mdash; see table below</td></tr>
+            <tr><td>GP18</td><td>Mode switch S2 &mdash; see table below</td></tr>
+            <tr><td>GND</td><td>Common ground for paddle and mode switches (any GND pin)</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:1rem">For the <strong>All Features</strong> UF2, the mode pins are read once at power-on to pick the active interface (pull low to activate; leave open for HIGH). Single-interface UF2s ignore them.</p>
+        <table>
+          <thead><tr><th>S0 (GP16)</th><th>S1 (GP17)</th><th>S2 (GP18)</th><th>Mode</th></tr></thead>
+          <tbody>
+            <tr><td>open</td><td>open</td><td>open</td><td>Composite — all interfaces active</td></tr>
+            <tr><td>LOW</td><td>open</td><td>open</td><td>Keyboard only</td></tr>
+            <tr><td>open</td><td>LOW</td><td>open</td><td>Gamepad only</td></tr>
+            <tr><td>open</td><td>open</td><td>LOW</td><td>Serial CDC only</td></tr>
+            <tr><td>LOW</td><td>LOW</td><td>open</td><td>MIDI only</td></tr>
+            <tr><td colspan="3"><em>any other combination</em></td><td>Composite (fallback)</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:1rem;font-size:0.78rem;color:#888">Built for RP2350A (QFN-60, the Pico&nbsp;2 silicon). RP2350B boards (QFN-80) need a separate build &mdash; open an issue if you need one.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">1</span>
+        <h2>Enter bootloader mode</h2>
+      </div>
+      <ol>
+        <li>Hold the <kbd>BOOTSEL</kbd> button on the Pico&nbsp;2</li>
+        <li>Plug in the USB cable (keep holding)</li>
+        <li>Release <kbd>BOOTSEL</kbd> &mdash; a drive named <kbd>RP2350</kbd> appears</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">2</span>
+        <h2>Download &amp; copy firmware</h2>
+      </div>
+      <p style="font-size:0.85rem;color:#555;margin-bottom:0.25rem;">
+        Drag the UF2 file onto the <kbd>RP2350</kbd> drive. The Pico&nbsp;2 reboots automatically.
+      </p>
+      <div class="uf2-grid">
+        <a class="uf2-btn" href="firmware-rp2350-all.uf2" download>
+          <strong>&#11015; All Features</strong>
+          <span>Keyboard + Gamepad + Serial + MIDI; mode pins select interface</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2350-midi.uf2" download>
+          <strong>&#11015; MIDI</strong>
+          <span>USB MIDI only — note 60/62 for deskHPSDR, Thetis, Vail</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2350-keyboard.uf2" download>
+          <strong>&#11015; Keyboard</strong>
+          <span>USB HID keyboard only</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2350-gamepad.uf2" download>
+          <strong>&#11015; Gamepad</strong>
+          <span>USB HID gamepad only</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2350-serial.uf2" download>
           <strong>&#11015; Serial CDC</strong>
           <span>USB serial port only</span>
         </a>

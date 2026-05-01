@@ -13,7 +13,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        target: [thumbv6m-none-eabi, xtensa-esp32s3-none-elf]
+        target: [thumbv6m-none-eabi, thumbv8m.main-none-eabihf, xtensa-esp32s3-none-elf]
         feature_set: [all, keyboard, gamepad, serial, midi]
     steps:
       - uses: actions/checkout@v4
@@ -24,6 +24,14 @@ jobs:
         with:
           toolchain: nightly
           targets: thumbv6m-none-eabi
+          components: llvm-tools-preview
+
+      - name: Install Rust (RP2350)
+        if: matrix.target == 'thumbv8m.main-none-eabihf'
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: nightly
+          targets: thumbv8m.main-none-eabihf
           components: llvm-tools-preview
 
       - name: Install Xtensa toolchain
@@ -45,51 +53,67 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cargo binstall -y cargo-binutils
-          if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
-            cargo binstall -y elf2uf2-rs
-          else
-            cargo binstall -y espflash
-          fi
+          case "${{ matrix.target }}" in
+            thumbv6m-none-eabi|thumbv8m.main-none-eabihf)
+              cargo binstall -y elf2uf2-rs
+              ;;
+            *)
+              cargo binstall -y espflash
+              ;;
+          esac
 
       - name: Build and Package
         run: |
-          if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
-            ARCH_FEAT="rp2040"
-            BIN="rp2040"
-            CARGO_CMD="rustup run nightly cargo"
-            STD_ARG=""
-          else
-            source $HOME/export-esp.sh
-            ARCH_FEAT="esp32s3"
-            BIN="esp32s3"
-            CARGO_CMD="rustup run esp cargo"
-            STD_ARG="-Zbuild-std=core"
-          fi
-          
+          case "${{ matrix.target }}" in
+            thumbv6m-none-eabi)
+              ARCH_FEAT="rp2040"; BIN="rp2040"
+              CARGO_CMD="rustup run nightly cargo"; STD_ARG=""
+              ;;
+            thumbv8m.main-none-eabihf)
+              ARCH_FEAT="rp2350"; BIN="rp2350"
+              CARGO_CMD="rustup run nightly cargo"; STD_ARG=""
+              ;;
+            xtensa-esp32s3-none-elf)
+              source $HOME/export-esp.sh
+              ARCH_FEAT="esp32s3"; BIN="esp32s3"
+              CARGO_CMD="rustup run esp cargo"; STD_ARG="-Zbuild-std=core"
+              ;;
+          esac
+
           FEATURES="$ARCH_FEAT,defmt"
           if [ "${{ matrix.feature_set }}" == "all" ]; then
             FEATURES="$FEATURES,keyboard,gamepad,serial,midi"
           else
             FEATURES="$FEATURES,${{ matrix.feature_set }}"
           fi
-          
+
           $CARGO_CMD build --release --target ${{ matrix.target }} --no-default-features --features "$FEATURES" --bin "$BIN" $STD_ARG
-          
+
           # Prepare binaries
           FILE_BASE="cw-adapter-${{ matrix.target }}-${{ matrix.feature_set }}"
           ELF="target/${{ matrix.target }}/release/$BIN"
-          
-          if [ "${{ matrix.target }}" == "thumbv6m-none-eabi" ]; then
-            $HOME/.cargo/bin/rust-objcopy -O binary "$ELF" "$FILE_BASE.bin"
-            $HOME/.cargo/bin/elf2uf2-rs "$ELF" "$FILE_BASE.uf2"
-          else
-            $HOME/.cargo/bin/espflash save-image --chip esp32s3 "$ELF" "$FILE_BASE.bin"
-            # Patch the binary so the IDF 5.x bootloader accepts it on all chip
-            # revisions.  Without this the bootloader reads stale code bytes at
-            # the esp_app_desc_t location and may reject the image with:
-            #   "Image requires efuse blk rev >= vX.Y, but chip is vA.B"
-            python3 scripts/patch_esp32s3.py "$FILE_BASE.bin" "$FILE_BASE.bin"
-          fi
+
+          case "${{ matrix.target }}" in
+            thumbv6m-none-eabi)
+              $HOME/.cargo/bin/rust-objcopy -O binary "$ELF" "$FILE_BASE.bin"
+              $HOME/.cargo/bin/elf2uf2-rs "$ELF" "$FILE_BASE.uf2"
+              ;;
+            thumbv8m.main-none-eabihf)
+              $HOME/.cargo/bin/rust-objcopy -O binary "$ELF" "$FILE_BASE.bin"
+              $HOME/.cargo/bin/elf2uf2-rs "$ELF" "$FILE_BASE.uf2"
+              # elf2uf2-rs hardcodes the RP2040 family ID; rewrite it so the
+              # Pico 2 BOOTSEL drive will accept the file (RP2350-ARM-S).
+              python3 scripts/patch_uf2_family.py "$FILE_BASE.uf2" 0xe48bff59
+              ;;
+            xtensa-esp32s3-none-elf)
+              $HOME/.cargo/bin/espflash save-image --chip esp32s3 "$ELF" "$FILE_BASE.bin"
+              # Patch the binary so the IDF 5.x bootloader accepts it on all chip
+              # revisions.  Without this the bootloader reads stale code bytes at
+              # the esp_app_desc_t location and may reject the image with:
+              #   "Image requires efuse blk rev >= vX.Y, but chip is vA.B"
+              python3 scripts/patch_esp32s3.py "$FILE_BASE.bin" "$FILE_BASE.bin"
+              ;;
+          esac
           cp "$ELF" "$FILE_BASE.elf"
 
       - name: Upload artifacts

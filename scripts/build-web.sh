@@ -53,5 +53,31 @@ for feat in all keyboard gamepad serial midi; do
         /app/_site/firmware-rp2040-${feat}.uf2
 done
 
+# RP2350-ARM-Secure family ID (Pico 2). The BOOTSEL drive rejects UF2 files
+# that carry the RP2040 family ID, so we patch the field after elf2uf2-rs.
+RP2350_FAMILY_ID=0xe48bff59
+
+echo "=== Building RP2350 variants ==="
+for feat in all keyboard gamepad serial midi; do
+    BUILD_FEAT="rp2350,defmt"
+    [ "$feat" = "all" ] \
+        && BUILD_FEAT="$BUILD_FEAT,keyboard,gamepad,serial,midi" \
+        || BUILD_FEAT="$BUILD_FEAT,$feat"
+
+    echo "=== Building RP2350 / $feat ==="
+    cargo +nightly build --release \
+        --target thumbv8m.main-none-eabihf \
+        --no-default-features \
+        --features "$BUILD_FEAT" \
+        --bin rp2350
+
+    echo "=== Converting to UF2 for $feat ==="
+    elf2uf2-rs \
+        target/thumbv8m.main-none-eabihf/release/rp2350 \
+        /app/_site/firmware-rp2350-${feat}.uf2
+    python3 /app/scripts/patch_uf2_family.py \
+        /app/_site/firmware-rp2350-${feat}.uf2 "$RP2350_FAMILY_ID"
+done
+
 echo "=== Done ==="
 ls -lh /app/_site/firmware-*.bin /app/_site/firmware-*.uf2
