@@ -114,6 +114,12 @@
     th { color: #888; font-weight: 600; font-size: 0.75rem; text-transform: uppercase; }
     td:first-child, td:nth-child(2) { font-family: monospace; }
 
+    /* Pinout block */
+    .pinout { margin-top: 0.25rem; }
+    .pinout p { font-size: 0.82rem; color: #555; margin-bottom: 0.5rem; }
+    .pinout table td:first-child { font-family: monospace; width: 7rem; }
+    .pinout table td:nth-child(2) { font-family: inherit; }
+
     /* Flash section */
     .note {
       font-size: 0.82rem;
@@ -271,6 +277,30 @@
     <!-- ESP32-S3 section -->
     <p class="platform-heading" style="margin-top:0">ESP32-S3 &mdash; browser flash via Web Serial</p>
 
+    <!-- Pinout -->
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">&#9889;</span>
+        <h2>Pinout</h2>
+      </div>
+      <div class="pinout">
+        <p>All inputs use the chip's internal pull-ups. Connect each pin to <strong>GND</strong> through the paddle contact or jumper.</p>
+        <table>
+          <thead><tr><th>Pin</th><th>Function</th></tr></thead>
+          <tbody>
+            <tr><td>GPIO4</td><td>Dit paddle &mdash; tip / left contact, active low</td></tr>
+            <tr><td>GPIO5</td><td>Dah paddle &mdash; ring / right contact, active low</td></tr>
+            <tr><td>GPIO6</td><td>Mode switch S0 &mdash; see Step&nbsp;2</td></tr>
+            <tr><td>GPIO7</td><td>Mode switch S1 &mdash; see Step&nbsp;2</td></tr>
+            <tr><td>GPIO8</td><td>Mode switch S2 &mdash; see Step&nbsp;2</td></tr>
+            <tr><td>GPIO19</td><td>USB D&minus; (built-in on most S3 dev boards)</td></tr>
+            <tr><td>GPIO20</td><td>USB D+ (built-in on most S3 dev boards)</td></tr>
+            <tr><td>GND</td><td>Common ground for paddle and mode switches</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <!-- Step 1 -->
     <div class="card">
       <div class="card-title">
@@ -367,6 +397,40 @@
 
     <!-- RP2040 section -->
     <p class="platform-heading">Raspberry Pi Pico / RP2040 &mdash; UF2 drag-and-drop</p>
+
+    <!-- Pinout -->
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">&#9889;</span>
+        <h2>Pinout</h2>
+      </div>
+      <div class="pinout">
+        <p>All inputs use the RP2040's internal pull-ups. Connect each pin to <strong>GND</strong> through the paddle contact or jumper. Pin numbers are GPIO numbers (e.g. GP14 = physical pin&nbsp;19 on the Pico).</p>
+        <table>
+          <thead><tr><th>Pin</th><th>Function</th></tr></thead>
+          <tbody>
+            <tr><td>GP14</td><td>Dit paddle &mdash; tip / left contact, active low</td></tr>
+            <tr><td>GP15</td><td>Dah paddle &mdash; ring / right contact, active low</td></tr>
+            <tr><td>GP16</td><td>Mode switch S0 &mdash; see table below</td></tr>
+            <tr><td>GP17</td><td>Mode switch S1 &mdash; see table below</td></tr>
+            <tr><td>GP18</td><td>Mode switch S2 &mdash; see table below</td></tr>
+            <tr><td>GND</td><td>Common ground for paddle and mode switches (any GND pin)</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:1rem">For the <strong>All Features</strong> UF2, the mode pins are read once at power-on to pick the active interface (pull low to activate; leave open for HIGH). Single-interface UF2s ignore them.</p>
+        <table>
+          <thead><tr><th>S0 (GP16)</th><th>S1 (GP17)</th><th>S2 (GP18)</th><th>Mode</th></tr></thead>
+          <tbody>
+            <tr><td>open</td><td>open</td><td>open</td><td>Composite — all interfaces active</td></tr>
+            <tr><td>LOW</td><td>open</td><td>open</td><td>Keyboard only</td></tr>
+            <tr><td>open</td><td>LOW</td><td>open</td><td>Gamepad only</td></tr>
+            <tr><td>open</td><td>open</td><td>LOW</td><td>Serial CDC only</td></tr>
+            <tr><td>LOW</td><td>LOW</td><td>open</td><td>MIDI only</td></tr>
+            <tr><td colspan="3"><em>any other combination</em></td><td>Composite (fallback)</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
 
     <div class="card">
       <div class="card-title">
