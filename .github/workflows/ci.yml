@@ -26,6 +26,13 @@ jobs:
         working-directory: esp32s3
         run: rustup run nightly cargo fmt --all -- --check
 
+  shared-sources:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shared source drift (rp vs esp32s3)
+        run: python3 scripts/check_shared_sources.py
+
   check:
     runs-on: ubuntu-latest
     strategy:
