@@ -42,7 +42,7 @@ jobs:
         run: |
           curl -L "https://github.com/esp-rs/espup/releases/download/${ESPUP_VERSION}/espup-x86_64-unknown-linux-gnu" -o espup
           chmod +x espup
-          ./espup install
+          ./espup install --targets esp32s3
           echo "PATH=$HOME/.rustup/toolchains/esp/bin:$PATH" >> $GITHUB_ENV
 
       - name: Rust Cache
