@@ -39,6 +39,8 @@ jobs:
 
       - name: Install Xtensa toolchain
         if: matrix.target == 'xtensa-esp32s3-none-elf'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           curl -L "https://github.com/esp-rs/espup/releases/download/${ESPUP_VERSION}/espup-x86_64-unknown-linux-gnu" -o espup
           chmod +x espup
