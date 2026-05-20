@@ -1,0 +1,15 @@
+# Custom runner that does save-image → patch_esp32s3.py → write-bin →
+# espflash monitor in one shot. The patch step rewrites the bytes at
+# app+0xD0/0xD2 that the IDF 5.x bootloader reads as min/max
+# efuse_blk_rev_full (esp-hal 0.23 doesn't place esp_app_desc_t at the
+# expected DROM offset; the patch zeros the field so the bootloader
+# accepts the image on any chip revision).
+[target.xtensa-esp32s3-none-elf]
+runner = "scripts/run.sh"
+rustflags = ["-C", "link-arg=-Tlinkall.x"]
+
+[build]
+target = "xtensa-esp32s3-none-elf"
+
+[env]
+DEFMT_LOG = "warn"

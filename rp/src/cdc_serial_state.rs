@@ -7,8 +7,8 @@
 //! This class is a minimal replacement that keeps the interrupt endpoint and exposes
 //! `send_serial_state(dcd, dsr)` for signalling paddle state via modem control lines.
 
-use core::sync::atomic::AtomicU8;
 use core::mem::MaybeUninit;
+use core::sync::atomic::AtomicU8;
 use core::sync::atomic::{AtomicBool, Ordering};
 
 use embassy_usb::control::{self, InResponse, OutResponse, Recipient, Request, RequestType};
@@ -64,11 +64,11 @@ impl Default for State<'_> {
 struct ControlShared {
     dtr: AtomicBool,
     rts: AtomicBool,
-    /// The interface number, stored here so the notification sender can embed
-    /// it in the wIndex field of each SERIAL_STATE packet.
-    /// Written once during `CdcWithSerialState::new()` before any task reads it;
-    /// `Relaxed` ordering is safe because task spawning provides the necessary
-    /// happens-before synchronisation.
+    /// Interface number embedded in the wIndex field of every SERIAL_STATE
+    /// notification. Written once in `CdcWithSerialState::new()` with `Release`
+    /// and loaded with `Acquire` in `send_serial_state` so the read can never
+    /// observe the uninitialized 0 even if the constructor's happens-before is
+    /// ever provided by something other than task-spawn synchronization.
     comm_if: AtomicU8,
 }
 
@@ -193,17 +193,20 @@ impl<'d, D: Driver<'d>> CdcWithSerialState<'d, D> {
         );
         alt.descriptor(CS_INTERFACE, &[CDC_TYPE_UNION, comm_if.into(), data_if]);
 
-        let comm_ep = alt.endpoint_interrupt_in(10, 10);
+        let comm_ep = alt.endpoint_interrupt_in(None, 10, 10);
 
         // Data interface
         let mut iface = func.interface();
         let mut alt = iface.alt_setting(USB_CLASS_CDC_DATA, 0x00, CDC_PROTOCOL_NONE, None);
-        let read_ep = alt.endpoint_bulk_out(max_packet_size);
-        let write_ep = alt.endpoint_bulk_in(max_packet_size);
+        let read_ep = alt.endpoint_bulk_out(None, max_packet_size);
+        let write_ep = alt.endpoint_bulk_in(None, max_packet_size);
 
         drop(func);
 
-        state.shared.comm_if.store(comm_if.into(), core::sync::atomic::Ordering::Relaxed);
+        state
+            .shared
+            .comm_if
+            .store(comm_if.into(), core::sync::atomic::Ordering::Release);
 
         let control = state.control.write(Control {
             shared: &state.shared,
@@ -258,7 +261,10 @@ impl<'d, D: Driver<'d>> CdcWithSerialState<'d, D> {
         //   [4-5] wIndex = interface number
         //   [6-7] wLength = 2
         //   [8-9] data = 16-bit state bitmask (LE)
-        let iface = self.control.comm_if.load(core::sync::atomic::Ordering::Relaxed);
+        let iface = self
+            .control
+            .comm_if
+            .load(core::sync::atomic::Ordering::Acquire);
         let packet: [u8; 10] = [
             0xA1,
             NOTIF_SERIAL_STATE,

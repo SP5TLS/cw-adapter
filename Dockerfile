@@ -2,8 +2,8 @@
 FROM espressif/idf-rust:all_latest
 
 # Image runs as user 'esp' by default
-# Install thumbv6m target and elf2uf2-rs for RP2040 in the nightly toolchain
-RUN rustup target add --toolchain nightly thumbv6m-none-eabi \
+# Install ARM targets (RP2040 + RP2350) and elf2uf2-rs in the nightly toolchain.
+RUN rustup target add --toolchain nightly thumbv6m-none-eabi thumbv8m.main-none-eabihf \
  && cargo +nightly install elf2uf2-rs
 
 # Make the home directory, cargo, and rustup dirs accessible to any user.

@@ -1,0 +1,48 @@
+[package]
+name = "cw-adapter-rp"
+version = "0.1.0"
+edition = "2024"
+
+# RP2040 + RP2350 firmware on the latest embassy stack. Decoupled from the
+# esp32s3 crate so the two don't fight over embassy-time-queue-utils versions.
+
+[dependencies]
+embassy-executor = { version = "0.10.0", features = ["executor-thread", "executor-interrupt", "platform-cortex-m", "defmt"] }
+embassy-sync = "0.8.0"
+embassy-time = { version = "0.5.1", features = ["generic-queue-8"] }
+# Composite mode needs 4 interfaces: CDC (2) + MIDI (2) — embassy-usb's default cap.
+embassy-usb = { version = "0.6.0" }
+embassy-usb-driver = "0.2"
+embassy-rp = { version = "0.10.0", features = ["unstable-pac", "time-driver", "critical-section-impl", "defmt"] }
+defmt = "1"
+defmt-rtt = "1"
+static_cell = "2.1.0"
+portable-atomic = { version = "1.10.0", features = ["critical-section"] }
+cortex-m = "0.7.7"
+cortex-m-rt = "0.7.5"
+panic-probe = { version = "1", features = ["print-defmt"] }
+
+[features]
+default = ["serial", "midi"]
+serial = []
+midi = []
+
+# Chip selection. The two are mutually exclusive at link time (different
+# memory.x and target triples).
+rp2040 = ["embassy-rp/rp2040"]
+rp2350 = ["embassy-rp/rp235xa"]
+
+[[bin]]
+name = "rp2040"
+path = "src/bin/rp2040.rs"
+required-features = ["rp2040"]
+
+[[bin]]
+name = "rp2350"
+path = "src/bin/rp2350.rs"
+required-features = ["rp2350"]
+
+[[bin]]
+name = "rp2350_blinky"
+path = "src/bin/rp2350_blinky.rs"
+required-features = ["rp2350"]

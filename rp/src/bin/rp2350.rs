@@ -1,6 +1,21 @@
 #![no_std]
 #![no_main]
 
+// RP2350A (Pico 2) firmware. The HAL exposes the same `embassy_rp` API
+// surface as the RP2040 build; the chip family is selected by the
+// `embassy-rp/rp235xa` feature wired up via the top-level `rp2350` feature.
+//
+// Notes vs. RP2040:
+//   * No second-stage boot2; the BOOTROM reads the image directly from XIP
+//     flash starting at 0x10000000. embassy-rp injects the required
+//     IMAGE_DEF block (secure_exe) automatically when `_rp235x` is on.
+//   * Memory layout differs (see build.rs): 2 MiB flash + 520 KiB SRAM.
+//   * Cortex-M33 instead of Cortex-M0+, but the user-mode code we run is
+//     unchanged — the same SWI_IRQ_1 priority-elevation trick still works.
+
+#[cfg(feature = "serial")]
+use cw_adapter_rp::cdc_serial_state::{CdcWithSerialState, State as CdcState};
+use cw_adapter_rp::common::{CwApp, LaunchMode};
 use defmt::*;
 use embassy_executor::{InterruptExecutor, Spawner};
 use embassy_rp::bind_interrupts;
@@ -9,15 +24,6 @@ use embassy_rp::peripherals::USB;
 use embassy_rp::usb::{Driver, InterruptHandler};
 use embassy_usb::Builder;
 use static_cell::StaticCell;
-use cw_adapter::common::{CwApp, LaunchMode};
-#[cfg(feature = "gamepad")]
-use cw_adapter::common::GamepadReport;
-#[cfg(feature = "serial")]
-use cw_adapter::cdc_serial_state::{CdcWithSerialState, State as CdcState};
-#[cfg(any(feature = "keyboard", feature = "gamepad"))]
-use usbd_hid::descriptor::SerializedDescriptor;
-#[cfg(feature = "keyboard")]
-use usbd_hid::descriptor::KeyboardReport;
 
 use {defmt_rtt as _, panic_probe as _};
 
@@ -63,30 +69,17 @@ async fn main(spawner: Spawner) {
     let p = embassy_rp::init(Default::default());
 
     // 1. Initial Launch Mode Detection
-    // Three mode-select pins, all pull-up (connect to GND to activate).
-    // S0=GP16, S1=GP17, S2=GP18.
-    // Pin combination → mode:
-    //   open/open/open → Composite   (all interfaces active)
-    //   S0/open/open   → KeyboardOnly
-    //   open/S1/open   → GamepadOnly
-    //   open/open/S2   → SerialOnly
-    //   S0/S1/open     → MidiOnly
-    //   any other      → Composite   (fallback)
+    // Two mode-select pins, all pull-up (connect to GND to activate).
+    // S0=GP16 → SerialOnly, S1=GP17 → MidiOnly. Both LOW or both HIGH → Composite.
     let s0 = Input::new(p.PIN_16, Pull::Up);
     let s1 = Input::new(p.PIN_17, Pull::Up);
-    let s2 = Input::new(p.PIN_18, Pull::Up);
 
     #[allow(unreachable_patterns)]
-    let launch_mode = match (s0.is_low(), s1.is_low(), s2.is_low()) {
-        (false, false, false) => LaunchMode::Composite,
-        #[cfg(feature = "keyboard")]
-        (true, false, false) => LaunchMode::KeyboardOnly,
-        #[cfg(feature = "gamepad")]
-        (false, true, false) => LaunchMode::GamepadOnly,
+    let launch_mode = match (s0.is_low(), s1.is_low()) {
         #[cfg(feature = "serial")]
-        (false, false, true) => LaunchMode::SerialOnly,
+        (true, false) => LaunchMode::SerialOnly,
         #[cfg(feature = "midi")]
-        (true, true, false) => LaunchMode::MidiOnly,
+        (false, true) => LaunchMode::MidiOnly,
         _ => LaunchMode::Composite,
     };
 
@@ -97,12 +90,10 @@ async fn main(spawner: Spawner) {
     let mut config = embassy_usb::Config::new(0x16c0, 0x27db);
     config.manufacturer = Some("Custom CW");
     config.product = Some(launch_mode.product_name());
-    config.serial_number = Some("12345678");
+    config.serial_number = Some("23456789");
     config.max_power = 100;
     config.max_packet_size_0 = 64;
 
-    // Config::new() defaults to composite (0xEF/0x02/0x01 + composite_with_iads=true).
-    // For single-interface modes, clear these so the device presents as a single-function class.
     if !matches!(launch_mode, LaunchMode::Composite) {
         config.device_class = 0x00;
         config.device_sub_class = 0x00;
@@ -137,52 +128,9 @@ async fn main(spawner: Spawner) {
         None
     };
 
-    #[cfg(feature = "keyboard")]
-    let keyboard = if matches!(
-        launch_mode,
-        LaunchMode::Composite | LaunchMode::KeyboardOnly
-    ) {
-        use embassy_usb::class::hid::{Config as HidConfig, HidWriter, State as HidState};
-        static KBD_STATE: StaticCell<HidState> = StaticCell::new();
-        let kbd_config = HidConfig {
-            report_descriptor: KeyboardReport::desc(),
-            poll_ms: 1,
-            request_handler: None,
-            max_packet_size: 8,
-        };
-        Some(HidWriter::<'_, _, 8>::new(
-            &mut builder,
-            KBD_STATE.init(HidState::new()),
-            kbd_config,
-        ))
-    } else {
-        None
-    };
-
-    #[cfg(feature = "gamepad")]
-    let gamepad = if matches!(launch_mode, LaunchMode::Composite | LaunchMode::GamepadOnly) {
-        use embassy_usb::class::hid::{Config as HidConfig, HidWriter, State as HidState};
-        static PAD_STATE: StaticCell<HidState> = StaticCell::new();
-        let pad_config = HidConfig {
-            report_descriptor: GamepadReport::desc(),
-            poll_ms: 1,
-            request_handler: None,
-            max_packet_size: 8,
-        };
-        Some(HidWriter::<'_, _, 8>::new(
-            &mut builder,
-            PAD_STATE.init(HidState::new()),
-            pad_config,
-        ))
-    } else {
-        None
-    };
-
     #[cfg(feature = "midi")]
     let midi = if matches!(launch_mode, LaunchMode::Composite | LaunchMode::MidiOnly) {
-        use cw_adapter::midi_interrupt::MidiInterruptClass;
-        // n_in_jacks=1 (device→host, keyer events), n_out_jacks=0 (host→device, unused).
-        // Interrupt endpoint with poll_ms=1 guarantees 1 ms host polling (unlike bulk).
+        use cw_adapter_rp::midi_interrupt::MidiInterruptClass;
         Some(MidiInterruptClass::new(&mut builder, 1, 0, 64, 1))
     } else {
         None
@@ -190,32 +138,23 @@ async fn main(spawner: Spawner) {
 
     // 4. Build & Spawn
     let usb = builder.build();
-
-    // USB device task runs at default thread-mode priority.
-    spawner.spawn(usb_task(usb)).unwrap();
+    spawner.spawn(usb_task(usb).unwrap());
 
     // 5. Run keying task at elevated priority via InterruptExecutor.
-    // SWI_IRQ_1 drives the executor above thread mode, ensuring key reads
-    // and MIDI/HID writes preempt USB enumeration/control work.
     let hi_spawner = EXECUTOR_HIGH.start(embassy_rp::pac::Interrupt::SWI_IRQ_1);
 
     let dit_pin = Input::new(p.PIN_14, Pull::Up);
     let dah_pin = Input::new(p.PIN_15, Pull::Up);
 
     let app = CwApp {
-        #[cfg(feature = "keyboard")]
-        keyboard,
-        #[cfg(feature = "gamepad")]
-        gamepad,
         #[cfg(feature = "serial")]
         serial,
         #[cfg(feature = "midi")]
         midi,
     };
 
-    hi_spawner.spawn(keying_task(app, dit_pin, dah_pin)).unwrap();
+    hi_spawner.spawn(keying_task(app, dit_pin, dah_pin).unwrap());
 
-    // Main thread has nothing left to do — yield forever.
     loop {
         embassy_time::Timer::after(embassy_time::Duration::from_secs(3600)).await;
     }

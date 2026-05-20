@@ -1,38 +1,57 @@
 #!/bin/bash
 set -euo pipefail
 
-# Load ESP environment variables
+# Build every feature combination for both crates.
+# Each crate has its own deps, lockfile, and .cargo/config.toml — they
+# are independent and must be built from inside their own directory.
+
 [ -f /home/esp/export-esp.sh ] && source /home/esp/export-esp.sh
 
-TARGETS=("thumbv6m-none-eabi" "xtensa-esp32s3-none-elf")
-FEATURES=("all" "keyboard" "gamepad" "serial" "midi")
+REPO_ROOT="$(cd "$(dirname "$0")" && pwd)"
+FEATURES=("all" "serial" "midi")
 
-for target in "${TARGETS[@]}"; do
+build_rp() {
+  local arch="$1" target="$2" bin="$3"
   for feat in "${FEATURES[@]}"; do
+    local build_feat="$arch"
+    [ "$feat" = "all" ] \
+      && build_feat="$build_feat,serial,midi" \
+      || build_feat="$build_feat,$feat"
+
     echo "----------------------------------------------------------------"
-    echo "Building for $target with feature set $feat..."
+    echo "Building rp/ ($bin) features=$build_feat"
     echo "----------------------------------------------------------------"
-    
-    if [ "$target" == "thumbv6m-none-eabi" ]; then
-      ARCH_FEAT="rp2040"
-      BIN="rp2040"
-      CARGO_CMD="cargo +nightly"
-      STD_ARG=""
-    else
-      ARCH_FEAT="esp32s3"
-      BIN="esp32s3"
-      CARGO_CMD="cargo +esp"
-      STD_ARG="-Zbuild-std=core"
-    fi
-    
-    BUILD_FEAT="$ARCH_FEAT,defmt"
-    if [ "$feat" == "all" ]; then
-      BUILD_FEAT="$BUILD_FEAT,keyboard,gamepad,serial,midi"
-    else
-      BUILD_FEAT="$BUILD_FEAT,$feat"
-    fi
-    
-    $CARGO_CMD build --release --target "$target" --no-default-features --features "$BUILD_FEAT" --bin "$BIN" $STD_ARG
+    (cd "$REPO_ROOT/rp" && \
+      cargo +nightly build --release \
+        --target "$target" \
+        --no-default-features \
+        --features "$build_feat" \
+        --bin "$bin")
   done
-done
+}
+
+build_esp32s3() {
+  for feat in "${FEATURES[@]}"; do
+    local build_feat
+    [ "$feat" = "all" ] \
+      && build_feat="serial,midi" \
+      || build_feat="$feat"
+
+    echo "----------------------------------------------------------------"
+    echo "Building esp32s3/ features=$build_feat"
+    echo "----------------------------------------------------------------"
+    (cd "$REPO_ROOT/esp32s3" && \
+      cargo +esp build --release \
+        --target xtensa-esp32s3-none-elf \
+        --no-default-features \
+        --features "$build_feat" \
+        --bin esp32s3 \
+        -Zbuild-std=core)
+  done
+}
+
+build_rp rp2040 thumbv6m-none-eabi rp2040
+build_rp rp2350 thumbv8m.main-none-eabihf rp2350
+build_esp32s3
+
 echo "All builds completed successfully!"

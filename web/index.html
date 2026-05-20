@@ -271,7 +271,7 @@
 
     <header>
       <h1>UC CW Interface</h1>
-      <p>ESP32-S3 browser flasher &middot; RP2040 UF2 downloads &mdash; no software to install</p>
+      <p>USB Serial CDC + USB MIDI &middot; ESP32-S3 browser flasher &middot; RP2040 / RP2350 UF2 downloads &mdash; no software to install</p>
     </header>
 
     <!-- ESP32-S3 section -->
@@ -290,9 +290,8 @@
           <tbody>
             <tr><td>GPIO4</td><td>Dit paddle &mdash; tip / left contact, active low</td></tr>
             <tr><td>GPIO5</td><td>Dah paddle &mdash; ring / right contact, active low</td></tr>
-            <tr><td>GPIO6</td><td>Mode switch S0 &mdash; see Step&nbsp;2</td></tr>
-            <tr><td>GPIO7</td><td>Mode switch S1 &mdash; see Step&nbsp;2</td></tr>
-            <tr><td>GPIO8</td><td>Mode switch S2 &mdash; see Step&nbsp;2</td></tr>
+            <tr><td>GPIO6</td><td>Mode switch S0 &mdash; pull LOW for Serial-only; see Step&nbsp;2</td></tr>
+            <tr><td>GPIO7</td><td>Mode switch S1 &mdash; pull LOW for MIDI-only; see Step&nbsp;2</td></tr>
             <tr><td>GPIO19</td><td>USB D&minus; (built-in on most S3 dev boards)</td></tr>
             <tr><td>GPIO20</td><td>USB D+ (built-in on most S3 dev boards)</td></tr>
             <tr><td>GND</td><td>Common ground for paddle and mode switches</td></tr>
@@ -326,21 +325,7 @@
           <input type="radio" name="variant" value="all" checked>
           <div>
             <strong>All Features</strong>
-            <span>Composite USB — Keyboard + Gamepad + Serial CDC + MIDI; active interface selected by mode pins at boot</span>
-          </div>
-        </label>
-        <label class="variant">
-          <input type="radio" name="variant" value="keyboard">
-          <div>
-            <strong>Keyboard Only</strong>
-            <span>USB HID keyboard — CW paddle inputs mapped to keystrokes</span>
-          </div>
-        </label>
-        <label class="variant">
-          <input type="radio" name="variant" value="gamepad">
-          <div>
-            <strong>Gamepad Only</strong>
-            <span>USB HID gamepad — dit and dah appear as gamepad buttons</span>
+            <span>Composite USB — Serial CDC + MIDI; active interface selected by mode pins at boot</span>
           </div>
         </label>
         <label class="variant">
@@ -360,16 +345,14 @@
       </div>
 
       <div id="mode-pin-info">
-        <p>Interface selected at power-on by GPIO6 (S0), GPIO7 (S1), GPIO8 (S2) — pull low to activate (internal pull-ups; leave open for HIGH):</p>
+        <p>Interface selected at power-on by GPIO6 (S0) and GPIO7 (S1) — pull low to activate (internal pull-ups; leave open for HIGH):</p>
         <table>
-          <thead><tr><th>S0 (GPIO6)</th><th>S1 (GPIO7)</th><th>S2 (GPIO8)</th><th>Mode</th></tr></thead>
+          <thead><tr><th>S0 (GPIO6)</th><th>S1 (GPIO7)</th><th>Mode</th></tr></thead>
           <tbody>
-            <tr><td>open</td><td>open</td><td>open</td><td>Composite — all interfaces active</td></tr>
-            <tr><td>LOW</td><td>open</td><td>open</td><td>Keyboard only</td></tr>
-            <tr><td>open</td><td>LOW</td><td>open</td><td>Gamepad only</td></tr>
-            <tr><td>open</td><td>open</td><td>LOW</td><td>Serial CDC only</td></tr>
-            <tr><td>LOW</td><td>LOW</td><td>open</td><td>MIDI only</td></tr>
-            <tr><td colspan="3"><em>any other combination</em></td><td>Composite (fallback)</td></tr>
+            <tr><td>open</td><td>open</td><td>Composite — Serial + MIDI both active</td></tr>
+            <tr><td>LOW</td><td>open</td><td>Serial CDC only</td></tr>
+            <tr><td>open</td><td>LOW</td><td>MIDI only</td></tr>
+            <tr><td>LOW</td><td>LOW</td><td>Composite (fallback)</td></tr>
           </tbody>
         </table>
       </div>
@@ -411,22 +394,19 @@
           <tbody>
             <tr><td>GP14</td><td>Dit paddle &mdash; tip / left contact, active low</td></tr>
             <tr><td>GP15</td><td>Dah paddle &mdash; ring / right contact, active low</td></tr>
-            <tr><td>GP16</td><td>Mode switch S0 &mdash; see table below</td></tr>
-            <tr><td>GP17</td><td>Mode switch S1 &mdash; see table below</td></tr>
-            <tr><td>GP18</td><td>Mode switch S2 &mdash; see table below</td></tr>
+            <tr><td>GP16</td><td>Mode switch S0 &mdash; pull LOW for Serial-only; see table below</td></tr>
+            <tr><td>GP17</td><td>Mode switch S1 &mdash; pull LOW for MIDI-only; see table below</td></tr>
             <tr><td>GND</td><td>Common ground for paddle and mode switches (any GND pin)</td></tr>
           </tbody>
         </table>
         <p style="margin-top:1rem">For the <strong>All Features</strong> UF2, the mode pins are read once at power-on to pick the active interface (pull low to activate; leave open for HIGH). Single-interface UF2s ignore them.</p>
         <table>
-          <thead><tr><th>S0 (GP16)</th><th>S1 (GP17)</th><th>S2 (GP18)</th><th>Mode</th></tr></thead>
+          <thead><tr><th>S0 (GP16)</th><th>S1 (GP17)</th><th>Mode</th></tr></thead>
           <tbody>
-            <tr><td>open</td><td>open</td><td>open</td><td>Composite — all interfaces active</td></tr>
-            <tr><td>LOW</td><td>open</td><td>open</td><td>Keyboard only</td></tr>
-            <tr><td>open</td><td>LOW</td><td>open</td><td>Gamepad only</td></tr>
-            <tr><td>open</td><td>open</td><td>LOW</td><td>Serial CDC only</td></tr>
-            <tr><td>LOW</td><td>LOW</td><td>open</td><td>MIDI only</td></tr>
-            <tr><td colspan="3"><em>any other combination</em></td><td>Composite (fallback)</td></tr>
+            <tr><td>open</td><td>open</td><td>Composite — Serial + MIDI both active</td></tr>
+            <tr><td>LOW</td><td>open</td><td>Serial CDC only</td></tr>
+            <tr><td>open</td><td>LOW</td><td>MIDI only</td></tr>
+            <tr><td>LOW</td><td>LOW</td><td>Composite (fallback)</td></tr>
           </tbody>
         </table>
       </div>
@@ -455,23 +435,86 @@
       <div class="uf2-grid">
         <a class="uf2-btn" href="firmware-rp2040-all.uf2" download>
           <strong>&#11015; All Features</strong>
-          <span>Keyboard + Gamepad + Serial + MIDI; mode pins select interface</span>
+          <span>Serial + MIDI; mode pins select interface</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2040-serial.uf2" download>
+          <strong>&#11015; Serial CDC</strong>
+          <span>USB serial port only — DCD/DSR signalling</span>
         </a>
         <a class="uf2-btn" href="firmware-rp2040-midi.uf2" download>
           <strong>&#11015; MIDI</strong>
           <span>USB MIDI only — note 60/62 for deskHPSDR, Thetis, Vail</span>
         </a>
-        <a class="uf2-btn" href="firmware-rp2040-keyboard.uf2" download>
-          <strong>&#11015; Keyboard</strong>
-          <span>USB HID keyboard only</span>
+      </div>
+    </div>
+
+    <!-- RP2350 section -->
+    <p class="platform-heading">Raspberry Pi Pico 2 / RP2350 &mdash; UF2 drag-and-drop</p>
+
+    <!-- Pinout -->
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">&#9889;</span>
+        <h2>Pinout</h2>
+      </div>
+      <div class="pinout">
+        <p>Same wiring as the original Pico. All inputs use the RP2350's internal pull-ups; connect each pin to <strong>GND</strong> through the paddle contact or jumper. Pin numbers are GPIO numbers (e.g. GP14 = physical pin&nbsp;19 on the Pico&nbsp;2).</p>
+        <table>
+          <thead><tr><th>Pin</th><th>Function</th></tr></thead>
+          <tbody>
+            <tr><td>GP14</td><td>Dit paddle &mdash; tip / left contact, active low</td></tr>
+            <tr><td>GP15</td><td>Dah paddle &mdash; ring / right contact, active low</td></tr>
+            <tr><td>GP16</td><td>Mode switch S0 &mdash; pull LOW for Serial-only; see table below</td></tr>
+            <tr><td>GP17</td><td>Mode switch S1 &mdash; pull LOW for MIDI-only; see table below</td></tr>
+            <tr><td>GND</td><td>Common ground for paddle and mode switches (any GND pin)</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:1rem">For the <strong>All Features</strong> UF2, the mode pins are read once at power-on to pick the active interface (pull low to activate; leave open for HIGH). Single-interface UF2s ignore them.</p>
+        <table>
+          <thead><tr><th>S0 (GP16)</th><th>S1 (GP17)</th><th>Mode</th></tr></thead>
+          <tbody>
+            <tr><td>open</td><td>open</td><td>Composite — Serial + MIDI both active</td></tr>
+            <tr><td>LOW</td><td>open</td><td>Serial CDC only</td></tr>
+            <tr><td>open</td><td>LOW</td><td>MIDI only</td></tr>
+            <tr><td>LOW</td><td>LOW</td><td>Composite (fallback)</td></tr>
+          </tbody>
+        </table>
+        <p style="margin-top:1rem;font-size:0.78rem;color:#888">Built for RP2350A (QFN-60, the Pico&nbsp;2 silicon). RP2350B boards (QFN-80) need a separate build &mdash; open an issue if you need one.</p>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">1</span>
+        <h2>Enter bootloader mode</h2>
+      </div>
+      <ol>
+        <li>Hold the <kbd>BOOTSEL</kbd> button on the Pico&nbsp;2</li>
+        <li>Plug in the USB cable (keep holding)</li>
+        <li>Release <kbd>BOOTSEL</kbd> &mdash; a drive named <kbd>RP2350</kbd> appears</li>
+      </ol>
+    </div>
+
+    <div class="card">
+      <div class="card-title">
+        <span class="step-badge">2</span>
+        <h2>Download &amp; copy firmware</h2>
+      </div>
+      <p style="font-size:0.85rem;color:#555;margin-bottom:0.25rem;">
+        Drag the UF2 file onto the <kbd>RP2350</kbd> drive. The Pico&nbsp;2 reboots automatically.
+      </p>
+      <div class="uf2-grid">
+        <a class="uf2-btn" href="firmware-rp2350-all.uf2" download>
+          <strong>&#11015; All Features</strong>
+          <span>Serial + MIDI; mode pins select interface</span>
         </a>
-        <a class="uf2-btn" href="firmware-rp2040-gamepad.uf2" download>
-          <strong>&#11015; Gamepad</strong>
-          <span>USB HID gamepad only</span>
-        </a>
-        <a class="uf2-btn" href="firmware-rp2040-serial.uf2" download>
+        <a class="uf2-btn" href="firmware-rp2350-serial.uf2" download>
           <strong>&#11015; Serial CDC</strong>
-          <span>USB serial port only</span>
+          <span>USB serial port only — DCD/DSR signalling</span>
+        </a>
+        <a class="uf2-btn" href="firmware-rp2350-midi.uf2" download>
+          <strong>&#11015; MIDI</strong>
+          <span>USB MIDI only — note 60/62 for deskHPSDR, Thetis, Vail</span>
         </a>
       </div>
     </div>
@@ -487,10 +530,10 @@
 
       <div class="variants">
         <label class="variant">
-          <input type="radio" name="test-input" value="keyboard" checked>
+          <input type="radio" name="test-input" value="serial" checked>
           <div>
-            <strong>Keyboard</strong>
-            <span>Listens for Z (dit) and X (dah) keystrokes</span>
+            <strong>Serial CDC</strong>
+            <span>DCD = dit, DSR = dah &mdash; modem signals via Web Serial (Chrome/Edge)</span>
           </div>
         </label>
         <label class="variant">
@@ -498,20 +541,6 @@
           <div>
             <strong>MIDI</strong>
             <span>Note 60 = dit, Note 62 = dah &mdash; Web MIDI API (Chrome/Edge)</span>
-          </div>
-        </label>
-        <label class="variant">
-          <input type="radio" name="test-input" value="serial">
-          <div>
-            <strong>Serial CDC</strong>
-            <span>DCD = dit, DSR = dah &mdash; modem signals via Web Serial (Chrome/Edge)</span>
-          </div>
-        </label>
-        <label class="variant">
-          <input type="radio" name="test-input" value="gamepad">
-          <div>
-            <strong>Gamepad</strong>
-            <span>Button 1 = dit, Button 2 = dah &mdash; Gamepad API</span>
           </div>
         </label>
       </div>
@@ -572,24 +601,9 @@
       setDebug('');
       showDebug(false);
       const mode = document.querySelector('input[name="test-input"]:checked').value;
-      if      (mode === 'keyboard') initTestKeyboard();
-      else if (mode === 'midi')     await initTestMidi();
+      if      (mode === 'midi')     await initTestMidi();
       else if (mode === 'serial')   await initTestSerial();
-      else if (mode === 'gamepad')  initTestGamepad();
     });
-
-    function initTestKeyboard() {
-      const down = e => { if (e.code === 'KeyZ') setDit(true);  if (e.code === 'KeyX') setDah(true);  };
-      const up   = e => { if (e.code === 'KeyZ') setDit(false); if (e.code === 'KeyX') setDah(false); };
-      document.addEventListener('keydown', down);
-      document.addEventListener('keyup',   up);
-      testCleanup = () => {
-        document.removeEventListener('keydown', down);
-        document.removeEventListener('keyup',   up);
-        setDit(false); setDah(false);
-      };
-      setTestStatus('Listening — press Z (dit) or X (dah).');
-    }
 
     // MIDI note name helper: 60 → "C4", 62 → "D4", etc.
     const NOTE_NAMES = ['C','C#','D','D#','E','F','F#','G','G#','A','A#','B'];
@@ -674,46 +688,6 @@
       };
     }
 
-    function initTestGamepad() {
-      let gpIdx = null;
-      let rafId = null;
-      const poll = () => {
-        if (gpIdx !== null) {
-          const gp = navigator.getGamepads()[gpIdx];
-          if (gp) {
-            setDit(gp.buttons[0]?.pressed ?? false);
-            setDah(gp.buttons[1]?.pressed ?? false);
-            setDebug(
-              gp.buttons.map((b, i) =>
-                `B${(i + 1).toString().padStart(2)}: ${b.pressed ? 'pressed ' : 'released'}`
-              ).join('\n')
-            );
-          }
-        }
-        rafId = requestAnimationFrame(poll);
-      };
-      const onConnect = e => {
-        gpIdx = e.gamepad.index;
-        setTestStatus(`Gamepad connected: "${e.gamepad.id}"`);
-        showDebug(true);
-      };
-      window.addEventListener('gamepadconnected', onConnect);
-      // Use already-connected gamepad if present
-      const existing = [...navigator.getGamepads()].find(g => g);
-      if (existing) {
-        gpIdx = existing.index;
-        setTestStatus(`Using gamepad: "${existing.id}"`);
-        showDebug(true);
-      } else {
-        setTestStatus('Press any button on the adapter to activate it\u2026');
-      }
-      poll();
-      testCleanup = () => {
-        window.removeEventListener('gamepadconnected', onConnect);
-        cancelAnimationFrame(rafId);
-        setDit(false); setDah(false);
-      };
-    }
   </script>
 </body>
 </html>

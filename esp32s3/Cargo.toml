@@ -1,0 +1,34 @@
+[package]
+name = "cw-adapter-esp32s3"
+version = "0.1.0"
+edition = "2024"
+
+# ESP32-S3 firmware. Pinned to the esp-hal 0.23 / esp-hal-embassy 0.6 era
+# because that lineage still uses embassy-time-queue-utils 0.1; later
+# esp-hal-embassy releases need updates that haven't landed for our chip
+# variant. The RP crate uses a newer embassy stack independently — keeping
+# the two in separate workspace members avoids forcing one set of versions
+# on both targets.
+
+[dependencies]
+embassy-executor = { version = "0.7.0", features = ["task-arena-size-16384", "executor-thread"] }
+embassy-sync = "0.7.0"
+embassy-time = { version = "0.4.0", features = ["generic-queue-8"] }
+embassy-usb = { version = "0.4.0", features = ["defmt"] }
+defmt = "0.3"
+static_cell = "2.1.0"
+portable-atomic = { version = "1.10.0", features = ["critical-section"] }
+
+esp-hal = { version = "0.23.0", features = ["esp32s3", "defmt"] }
+esp-hal-embassy = { version = "0.6.0", features = ["esp32s3", "defmt"] }
+esp-backtrace = { version = "0.15.0", features = ["esp32s3", "panic-handler", "exception-handler", "defmt"] }
+esp-println = { version = "0.13.0", features = ["esp32s3", "defmt-espflash"] }
+
+[features]
+default = ["serial", "midi"]
+serial = []
+midi = []
+
+[[bin]]
+name = "esp32s3"
+path = "src/bin/esp32s3.rs"

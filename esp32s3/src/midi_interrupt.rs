@@ -2,11 +2,11 @@
 //!
 //! USB MIDI 1.0 specifies bulk endpoints, but interrupt endpoints guarantee a
 //! maximum host polling interval (`poll_ms`).  Many low-latency MIDI devices
-//! use interrupt endpoints in practice; this gives us the same 1 ms scheduling
-//! guarantee that the HID keyboard/gamepad modes already enjoy.
+//! use interrupt endpoints in practice; the 1 ms poll keeps keying latency
+//! bounded.
 
-use embassy_usb::driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut};
 use embassy_usb::Builder;
+use embassy_usb::driver::{Driver, Endpoint, EndpointError, EndpointIn, EndpointOut};
 
 /// Mirrors `embassy_usb::class::midi` constants.
 const USB_AUDIO_CLASS: u8 = 0x01;

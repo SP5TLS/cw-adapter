@@ -1,1 +1,4 @@
-/target
+target/
+_site/
+.DS_Store
+.claude/

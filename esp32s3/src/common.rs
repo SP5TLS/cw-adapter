@@ -1,13 +1,8 @@
-use embassy_time::{Duration, Timer};
-use embassy_usb::driver::Driver;
-#[cfg(any(feature = "keyboard", feature = "gamepad"))]
-use embassy_usb::class::hid::HidWriter;
-// generator_prelude::* is always needed for the #[gen_hid_descriptor] macro on GamepadReport.
-use usbd_hid::descriptor::generator_prelude::*;
-#[cfg(feature = "keyboard")]
-use usbd_hid::descriptor::KeyboardReport;
 #[cfg(feature = "serial")]
 use crate::cdc_serial_state::CdcWithSerialState;
+#[cfg(any(feature = "serial", feature = "midi"))]
+use embassy_time::{Duration, Timer};
+use embassy_usb::driver::Driver;
 
 #[cfg(feature = "midi")]
 use crate::midi_interrupt::MidiInterruptClass;
@@ -17,19 +12,6 @@ use crate::midi_interrupt::MidiInterruptClass;
 const MIDI_NOTE_DIT: u8 = 60;
 #[cfg(feature = "midi")]
 const MIDI_NOTE_DAH: u8 = 62;
-
-// --- HID Descriptors ---
-
-#[gen_hid_descriptor(
-    (collection = APPLICATION, usage_page = GENERIC_DESKTOP, usage = GAMEPAD) = {
-        (usage_page = BUTTON, usage_min = 1, usage_max = 8) = {
-            #[packed_bits 8] #[item_settings data, variable, absolute] buttons=input;
-        };
-    }
-)]
-pub struct GamepadReport {
-    pub buttons: u8,
-}
 
 // --- Debouncer ---
 
@@ -65,14 +47,9 @@ impl Debouncer {
 
 // --- App Logic ---
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-#[cfg_attr(feature = "defmt", derive(defmt::Format))]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, defmt::Format)]
 pub enum LaunchMode {
     Composite,
-    #[cfg(feature = "keyboard")]
-    KeyboardOnly,
-    #[cfg(feature = "gamepad")]
-    GamepadOnly,
     #[cfg(feature = "serial")]
     SerialOnly,
     #[cfg(feature = "midi")]
@@ -83,10 +60,6 @@ impl LaunchMode {
     pub fn product_name(self) -> &'static str {
         match self {
             LaunchMode::Composite => "CW Interface",
-            #[cfg(feature = "keyboard")]
-            LaunchMode::KeyboardOnly => "CW Interface (Keys)",
-            #[cfg(feature = "gamepad")]
-            LaunchMode::GamepadOnly => "CW Interface (Pad)",
             #[cfg(feature = "serial")]
             LaunchMode::SerialOnly => "CW Interface (Serial)",
             #[cfg(feature = "midi")]
@@ -96,16 +69,17 @@ impl LaunchMode {
 }
 
 pub struct CwApp<'a, D: Driver<'a>> {
-    #[cfg(feature = "keyboard")]
-    pub keyboard: Option<HidWriter<'a, D, 8>>,
-    #[cfg(feature = "gamepad")]
-    pub gamepad: Option<HidWriter<'a, D, 8>>,
     #[cfg(feature = "serial")]
     pub serial: Option<CdcWithSerialState<'a, D>>,
     #[cfg(feature = "midi")]
     pub midi: Option<MidiInterruptClass<'a, D>>,
+    // Keep the generic `D` referenced when no transport feature is on, so the
+    // crate (and rp2350_blinky, which depends on it implicitly) still compiles.
+    #[cfg(not(any(feature = "serial", feature = "midi")))]
+    pub _marker: core::marker::PhantomData<&'a D>,
 }
 
+#[cfg(any(feature = "serial", feature = "midi"))]
 impl<'a, D: Driver<'a>> CwApp<'a, D> {
     pub async fn run(
         &mut self,
@@ -133,49 +107,17 @@ impl<'a, D: Driver<'a>> CwApp<'a, D> {
             let dit_pressed = dit_debounce.update(raw_dit);
             let dah_pressed = dah_debounce.update(raw_dah);
 
-            // 1. Keyboard Output
-            #[cfg(feature = "keyboard")]
-            if let Some(ref mut kbd) = self.keyboard {
-                let mut key_report = KeyboardReport::default();
-                // Pack pressed keys into the keycodes array in order.
-                // index advances after each entry so simultaneous presses land in separate slots.
-                let mut index = 0usize;
-                if dit_pressed {
-                    key_report.keycodes[index] = 0x1D; // 'z'
-                    index += 1;
-                }
-                if dah_pressed {
-                    key_report.keycodes[index] = 0x1B; // 'x'
-                    index += 1;
-                }
-                let _ = index;
-                kbd.write_serialize(&key_report).await.ok();
-            }
-
-            // 2. Gamepad Output
-            #[cfg(feature = "gamepad")]
-            if let Some(ref mut pad) = self.gamepad {
-                let mut buttons = 0u8;
-                if dit_pressed {
-                    buttons |= 0b0000_0001;
-                }
-                if dah_pressed {
-                    buttons |= 0b0000_0010;
-                }
-                pad.write_serialize(&GamepadReport { buttons }).await.ok();
-            }
-
-            // 3. Serial State Output (DCD = dit, DSR = dah) — event-driven, send on state transitions only
+            // Serial State Output (DCD = dit, DSR = dah) — event-driven, send on state transitions only
             #[cfg(feature = "serial")]
-            if let Some(ref mut ser) = self.serial {
-                if dit_pressed != prev_dit_ser || dah_pressed != prev_dah_ser {
-                    ser.send_serial_state(dit_pressed, dah_pressed).await.ok();
-                    prev_dit_ser = dit_pressed;
-                    prev_dah_ser = dah_pressed;
-                }
+            if let Some(ref mut ser) = self.serial
+                && (dit_pressed != prev_dit_ser || dah_pressed != prev_dah_ser)
+            {
+                ser.send_serial_state(dit_pressed, dah_pressed).await.ok();
+                prev_dit_ser = dit_pressed;
+                prev_dah_ser = dah_pressed;
             }
 
-            // 4. MIDI Output — event-driven, send on state transitions only
+            // MIDI Output — event-driven, send on state transitions only
             #[cfg(feature = "midi")]
             if let Some(ref mut midi) = self.midi {
                 let dit_changed = dit_pressed != prev_dit;
@@ -201,8 +143,12 @@ impl<'a, D: Driver<'a>> CwApp<'a, D> {
                     }
                     match midi.write_packet(&buf[..len]).await {
                         Ok(()) => {
-                            if dit_changed { prev_dit = dit_pressed; }
-                            if dah_changed { prev_dah = dah_pressed; }
+                            if dit_changed {
+                                prev_dit = dit_pressed;
+                            }
+                            if dah_changed {
+                                prev_dah = dah_pressed;
+                            }
                         }
                         Err(_) => {
                             // Reset so we re-send state after reconnect.
